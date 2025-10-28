@@ -56,12 +56,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.user.claims.sub;
+      console.log("Creating organization for user:", userId, "with body:", req.body);
       const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
       const org = await storage.createOrganization(data);
+      console.log("Organization created successfully:", org.id);
       res.json(org);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating organization:", error);
-      res.status(400).json({ message: "Failed to create organization" });
+      console.error("Error stack:", error?.stack);
+      res.status(400).json({ message: error?.message || "Failed to create organization" });
     }
   });
 
@@ -104,9 +107,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // TEAM ROUTES
   // ============================================
   
-  app.post('/api/teams', isAuthenticated, requireRole(['admin', 'head_coach']), verifyOrganizationAccess, async (req: AuthRequest, res) => {
+  app.post('/api/teams', isAuthenticated, async (req: AuthRequest, res) => {
     try {
+      const userId = req.user.claims.sub;
       const data = insertTeamSchema.parse(req.body);
+      
+      // Verify user owns the organization or is a coach
+      const org = await storage.getOrganization(data.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      const user = await storage.getUser(userId);
+      const isOwner = org.ownerId === userId;
+      const isCoach = user && (user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach');
+      
+      if (!isOwner && !isCoach) {
+        return res.status(403).json({ message: "Forbidden: only organization owners or coaches can create teams" });
+      }
+      
       const team = await storage.createTeam(data);
       res.json(team);
     } catch (error) {
@@ -177,30 +196,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PROGRAM ROUTES
   // ============================================
   
-  app.post('/api/programs', isAuthenticated, requireRole(['admin', 'head_coach', 'assistant_coach']), async (req: AuthRequest, res) => {
+  app.post('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const data = insertProgramSchema.parse({ ...req.body, createdBy: userId });
       
-      // Verify user has access to the organization
+      // Verify user owns the organization or is a coach with access
       const org = await storage.getOrganization(data.organizationId);
       if (!org) {
         return res.status(404).json({ message: "Organization not found" });
       }
       
-      if (org.ownerId !== userId) {
+      const user = await storage.getUser(userId);
+      const isOwner = org.ownerId === userId;
+      const isCoach = user && (user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach');
+      
+      // Coaches also need to be members of the organization
+      if (!isOwner && isCoach) {
         const userTeams = await storage.getUserTeams(userId);
         const hasAccess = userTeams.some(team => team.organizationId === data.organizationId);
         if (!hasAccess) {
           return res.status(403).json({ message: "Forbidden: not a member of this organization" });
         }
+      } else if (!isOwner && !isCoach) {
+        return res.status(403).json({ message: "Forbidden: only organization owners or coaches can create programs" });
       }
       
       const program = await storage.createProgram(data);
       res.json(program);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating program:", error);
-      res.status(400).json({ message: "Failed to create program" });
+      res.status(400).json({ message: error?.message || "Failed to create program" });
     }
   });
 

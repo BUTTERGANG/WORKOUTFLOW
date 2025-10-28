@@ -36,10 +36,11 @@ export default function Onboarding() {
       });
       setStep('team');
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error("Organization creation error:", error);
       toast({
         title: "Error",
-        description: "Failed to create organization",
+        description: error?.message || "Failed to create organization",
         variant: "destructive",
       });
     },

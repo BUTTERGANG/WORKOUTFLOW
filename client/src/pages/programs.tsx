@@ -19,6 +19,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Program } from "@shared/schema";
 
 export default function Programs() {
@@ -49,8 +56,8 @@ export default function Programs() {
         body: data,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', variables.organizationId] });
       toast({ title: "Success", description: "Program created" });
       setCreateDialogOpen(false);
       setProgramName("");
@@ -100,15 +107,16 @@ export default function Programs() {
   if (!user) return null;
 
   const isCoach = user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach';
+  const isOrgOwner = currentOrganization && currentOrganization.ownerId === user.id;
 
-  if (!isCoach) {
+  if (!isCoach && !isOrgOwner) {
     return (
       <div className="flex h-screen items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Access Denied</CardTitle>
             <CardDescription>
-              Only coaches can access program management.
+              Only coaches or organization owners can access program management.
             </CardDescription>
           </CardHeader>
         </Card>
