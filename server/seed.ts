@@ -55,16 +55,30 @@ async function seed() {
   ];
 
   try {
+    let inserted = 0;
+    let skipped = 0;
+
     for (const exercise of globalExercises) {
-      await db.insert(exercises).values({
+      const result = await db.insert(exercises).values({
         ...exercise,
         organizationId: null, // Global exercise
         createdBy: null,
-      }).onConflictDoNothing();
+      }).onConflictDoNothing().returning();
+      
+      if (result.length > 0) {
+        inserted++;
+      } else {
+        skipped++;
+      }
     }
-    console.log(`✓ Successfully seeded ${globalExercises.length} global exercises`);
+    
+    console.log(`✅ Successfully seeded ${inserted} new exercises`);
+    if (skipped > 0) {
+      console.log(`ℹ️  Skipped ${skipped} existing exercises`);
+    }
+    console.log(`📊 Total exercises in library: ${globalExercises.length}`);
   } catch (error) {
-    console.error("Error seeding exercises:", error);
+    console.error("❌ Error seeding exercises:", error);
     throw error;
   }
 
