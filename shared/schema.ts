@@ -39,9 +39,9 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User storage table with proper UUID type
+// User storage table (ID comes from Replit Auth as string)
 export const users = pgTable("users", {
-  id: uuid("id").defaultRandom().primaryKey(),
+  id: varchar("id").primaryKey(),
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
@@ -62,7 +62,7 @@ export const organizations = pgTable("organizations", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
-  ownerId: uuid("owner_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -84,7 +84,7 @@ export const teams = pgTable("teams", {
 export const teamMembers = pgTable("team_members", {
   id: uuid("id").defaultRandom().primaryKey(),
   teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: 'cascade' }),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   role: userRoleEnum("role").notNull(),
   joinedAt: timestamp("joined_at").defaultNow(),
 }, (table) => [
@@ -105,7 +105,7 @@ export const exercises = pgTable("exercises", {
   equipment: varchar("equipment", { length: 100 }), // e.g., 'barbell', 'dumbbell', 'bodyweight'
   videoUrl: text("video_url"),
   instructions: text("instructions"),
-  createdBy: uuid("created_by").references(() => users.id, { onDelete: 'set null' }),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: 'set null' }),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: 'cascade' }), // null = global exercise
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
@@ -123,7 +123,7 @@ export const programs = pgTable("programs", {
   description: text("description"),
   durationWeeks: integer("duration_weeks").notNull(),
   phase: programPhaseEnum("phase"),
-  createdBy: uuid("created_by").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdBy: varchar("created_by").notNull().references(() => users.id, { onDelete: 'cascade' }),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   isTemplate: boolean("is_template").default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -172,10 +172,10 @@ export const programExercises = pgTable("program_exercises", {
 export const programAssignments = pgTable("program_assignments", {
   id: uuid("id").defaultRandom().primaryKey(),
   programId: uuid("program_id").notNull().references(() => programs.id, { onDelete: 'cascade' }),
-  athleteId: uuid("athlete_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  athleteId: varchar("athlete_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   startDate: timestamp("start_date").notNull(),
   status: varchar("status", { length: 50 }).default('active'), // 'active', 'completed', 'paused'
-  assignedBy: uuid("assigned_by").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  assignedBy: varchar("assigned_by").notNull().references(() => users.id, { onDelete: 'cascade' }),
   assignedAt: timestamp("assigned_at").defaultNow(),
 }, (table) => [
   index("idx_program_assignments_program_id").on(table.programId),
@@ -190,7 +190,7 @@ export const programAssignments = pgTable("program_assignments", {
 
 export const workoutSessions = pgTable("workout_sessions", {
   id: uuid("id").defaultRandom().primaryKey(),
-  athleteId: uuid("athlete_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  athleteId: varchar("athlete_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   programDayId: uuid("program_day_id").references(() => programDays.id, { onDelete: 'set null' }),
   scheduledDate: timestamp("scheduled_date"),
   startedAt: timestamp("started_at"),
@@ -236,8 +236,8 @@ export const setLogs = pgTable("set_logs", {
 
 export const messages = pgTable("messages", {
   id: uuid("id").defaultRandom().primaryKey(),
-  senderId: uuid("sender_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-  recipientId: uuid("recipient_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  senderId: varchar("sender_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  recipientId: varchar("recipient_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   workoutSessionId: uuid("workout_session_id").references(() => workoutSessions.id, { onDelete: 'set null' }), // for workout-specific comments
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),

@@ -52,15 +52,17 @@ This platform provides coaches with powerful tools to create training programs, 
 
 ## Recent Changes
 
-- **2025-10-28**: Production-Ready Backend Complete
-  - ✅ Database migrated to proper UUID types (all ID columns now use `uuid()` instead of `varchar`)
+- **2025-10-28**: Critical ID Type Fix - Replit Auth Compatibility
+  - ⚠️ **CRITICAL**: Reverted users.id to `varchar` type (Replit Auth provides string IDs, not UUIDs)
+  - ✅ Updated all foreign keys referencing users.id to varchar (organizations.ownerId, teamMembers.userId, etc.)
+  - ✅ Database schema recreated with correct types - **users.id is VARCHAR, all other entities use UUID**
   - ✅ PostgreSQL pgcrypto extension enabled for UUID generation compatibility
+  - ✅ Fixed TypeScript compilation errors (target ES2015, proper Express type augmentation)
+  - ✅ Enhanced seed script with progress logging - seeded 34 global exercises
+  - ✅ Backend compiles cleanly with no errors
+  - ✅ Authentication flow working correctly with Replit Auth
   - ✅ Comprehensive authorization system with tenant isolation
   - ✅ Database indexes on all foreign keys and query columns
-  - ✅ Enhanced seed script with detailed logging (34 global exercises seeded)
-  - ✅ Fixed nanoid dependency for vite cache busting
-  - ✅ Removed duplicate type declarations
-  - ✅ All sessions cleared post-migration for clean UUID-based auth
 
 - **2025-10-28**: Initial MVP implementation
   - Complete database schema with multi-tenant support
@@ -82,7 +84,13 @@ This platform provides coaches with powerful tools to create training programs, 
 ### Available Scripts
 - `npm run dev` - Start development server (frontend + backend)
 - `npm run db:push` - Sync database schema with Drizzle
-- `npm run seed` - Seed database with global exercises
+- `tsx server/seed.ts` - Seed database with global exercises (run after fresh database setup)
+
+### Important Database Notes
+- **users.id is VARCHAR**: Replit Auth provides string-based user IDs (e.g., "2755323"), NOT UUIDs
+- All other entities use UUID primary keys with `.defaultRandom()`
+- Foreign keys referencing users.id must be VARCHAR type
+- Sessions table uses VARCHAR sid for session management
 
 ### API Endpoints
 
