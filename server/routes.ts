@@ -2,6 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { requireRole, verifyOrganizationAccess, verifyTeamAccess } from "./middleware/authorization";
 import {
   insertOrganizationSchema,
   insertTeamSchema,
@@ -21,6 +22,7 @@ import {
 // Extend Express Request type to include user
 interface AuthRequest extends Request {
   user: any;
+  currentUser?: any;
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -91,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // TEAM ROUTES
   // ============================================
   
-  app.post('/api/teams', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/teams', isAuthenticated, requireRole(['admin', 'head_coach']), verifyOrganizationAccess, async (req: AuthRequest, res) => {
     try {
       const data = insertTeamSchema.parse(req.body);
       const team = await storage.createTeam(data);
@@ -102,7 +104,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/organizations/:orgId/teams', isAuthenticated, async (req: AuthRequest, res) => {
+  app.get('/api/organizations/:orgId/teams', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
     try {
       const teams = await storage.getOrganizationTeams(req.params.orgId);
       res.json(teams);
@@ -112,7 +114,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/teams/:teamId/members', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/teams/:teamId/members', isAuthenticated, requireRole(['admin', 'head_coach']), verifyTeamAccess, async (req: AuthRequest, res) => {
     try {
       const data = insertTeamMemberSchema.parse({ ...req.body, teamId: req.params.teamId });
       const member = await storage.addTeamMember(data);
@@ -123,7 +125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/teams/:teamId/members', isAuthenticated, async (req: AuthRequest, res) => {
+  app.get('/api/teams/:teamId/members', isAuthenticated, verifyTeamAccess, async (req: AuthRequest, res) => {
     try {
       const members = await storage.getTeamMembers(req.params.teamId);
       res.json(members);
@@ -164,10 +166,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PROGRAM ROUTES
   // ============================================
   
-  app.post('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/programs', isAuthenticated, requireRole(['admin', 'head_coach', 'assistant_coach']), async (req: AuthRequest, res) => {
     try {
       const userId = req.user.claims.sub;
       const data = insertProgramSchema.parse({ ...req.body, createdBy: userId });
+      
+      // Verify user has access to the organization
+      const org = await storage.getOrganization(data.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      if (org.ownerId !== userId) {
+        const userTeams = await storage.getUserTeams(userId);
+        const hasAccess = userTeams.some(team => team.organizationId === data.organizationId);
+        if (!hasAccess) {
+          return res.status(403).json({ message: "Forbidden: not a member of this organization" });
+        }
+      }
+      
       const program = await storage.createProgram(data);
       res.json(program);
     } catch (error) {
@@ -178,10 +195,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
+      const userId = req.user.claims.sub;
       const organizationId = req.query.organizationId as string;
+      
       if (!organizationId) {
         return res.status(400).json({ message: "Organization ID required" });
       }
+      
+      // Verify access to organization
+      const org = await storage.getOrganization(organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      if (org.ownerId !== userId) {
+        const userTeams = await storage.getUserTeams(userId);
+        const hasAccess = userTeams.some(team => team.organizationId === organizationId);
+        if (!hasAccess) {
+          return res.status(403).json({ message: "Forbidden: not a member of this organization" });
+        }
+      }
+      
       const programs = await storage.getOrganizationPrograms(organizationId);
       res.json(programs);
     } catch (error) {
