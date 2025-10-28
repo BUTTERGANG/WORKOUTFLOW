@@ -1,0 +1,78 @@
+import { Switch, Route } from "wouter";
+import { queryClient } from "./lib/queryClient";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import { useAuth } from "@/hooks/useAuth";
+
+// Pages
+import Landing from "@/pages/landing";
+import Dashboard from "@/pages/dashboard";
+import Programs from "@/pages/programs";
+import Workout from "@/pages/workout";
+import Athletes from "@/pages/athletes";
+import Progress from "@/pages/progress";
+import Messages from "@/pages/messages";
+import Settings from "@/pages/settings";
+import NotFound from "@/pages/not-found";
+
+function Router() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Show landing page if not authenticated or still loading
+  if (isLoading || !isAuthenticated) {
+    return (
+      <Switch>
+        <Route path="/" component={Landing} />
+        <Route component={Landing} />
+      </Switch>
+    );
+  }
+
+  // Show authenticated app with sidebar
+  return (
+    <>
+      <AppSidebar />
+      <div className="flex w-full flex-col">
+        <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border bg-background px-4">
+          <SidebarTrigger data-testid="button-sidebar-toggle" />
+        </header>
+        <main className="flex-1 overflow-hidden">
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/programs" component={Programs} />
+            <Route path="/workout" component={Workout} />
+            <Route path="/athletes" component={Athletes} />
+            <Route path="/progress" component={Progress} />
+            <Route path="/messages" component={Messages} />
+            <Route path="/settings" component={Settings} />
+            <Route component={NotFound} />
+          </Switch>
+        </main>
+      </div>
+    </>
+  );
+}
+
+export default function App() {
+  // Custom sidebar width for workout application
+  const style = {
+    "--sidebar-width": "16rem",       // 256px
+    "--sidebar-width-icon": "3rem",   // 48px (default icon width)
+  };
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <SidebarProvider style={style as React.CSSProperties}>
+          <div className="flex h-screen w-full">
+            <Router />
+          </div>
+        </SidebarProvider>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
