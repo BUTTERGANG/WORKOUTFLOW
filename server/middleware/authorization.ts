@@ -1,30 +1,29 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user: any;
+  currentUser?: {
+    id: string;
+    email: string;
+    role: string;
+    teams: any[];
+    organizationIds: string[];
+  };
 }
 
 // Middleware to check if user has required role
 export function requireRole(allowedRoles: string[]) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user?.claims?.sub;
-      if (!userId) {
+      if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(401).json({ message: "User not found" });
-      }
-
-      if (!allowedRoles.includes(user.role)) {
+      if (!allowedRoles.includes(req.currentUser.role)) {
         return res.status(403).json({ message: "Forbidden: insufficient permissions" });
       }
 
-      // Attach user to request for downstream use
-      (req as any).currentUser = user;
       next();
     } catch (error) {
       console.error("Authorization error:", error);
@@ -33,29 +32,44 @@ export function requireRole(allowedRoles: string[]) {
   };
 }
 
+// Helper function to check if user owns or has access to an organization
+export async function hasOrganizationAccess(userId: string, organizationId: string): Promise<boolean> {
+  try {
+    const org = await storage.getOrganization(organizationId);
+    if (!org) {
+      return false;
+    }
+
+    // Owner always has access
+    if (org.ownerId === userId) {
+      return true;
+    }
+
+    // Check if user is a member through teams
+    const userTeams = await storage.getUserTeams(userId);
+    return userTeams.some(team => team.organizationId === organizationId);
+  } catch (error) {
+    console.error("Error checking organization access:", error);
+    return false;
+  }
+}
+
 // Middleware to verify organization access
 export async function verifyOrganizationAccess(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const userId = req.user?.claims?.sub;
+    if (!req.currentUser) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const organizationId = req.params.orgId || req.params.organizationId || req.body.organizationId;
 
     if (!organizationId) {
       return res.status(400).json({ message: "Organization ID required" });
     }
 
-    const org = await storage.getOrganization(organizationId);
-    if (!org) {
-      return res.status(404).json({ message: "Organization not found" });
-    }
-
-    // Check if user owns the organization or is a member
-    if (org.ownerId !== userId) {
-      const userTeams = await storage.getUserTeams(userId);
-      const hasAccess = userTeams.some(team => team.organizationId === organizationId);
-      
-      if (!hasAccess) {
-        return res.status(403).json({ message: "Forbidden: not a member of this organization" });
-      }
+    const hasAccess = await hasOrganizationAccess(req.currentUser.id, organizationId);
+    if (!hasAccess) {
+      return res.status(403).json({ message: "Forbidden: not a member of this organization" });
     }
 
     next();
@@ -65,39 +79,90 @@ export async function verifyOrganizationAccess(req: AuthRequest, res: Response, 
   }
 }
 
+// Helper function to check if user has access to a team
+export async function hasTeamAccess(userId: string, teamId: string): Promise<boolean> {
+  try {
+    const team = await storage.getTeam(teamId);
+    if (!team) {
+      return false;
+    }
+
+    // Check if user has access to the team's organization
+    const hasOrgAccess = await hasOrganizationAccess(userId, team.organizationId);
+    if (!hasOrgAccess) {
+      return false;
+    }
+
+    // Also check if they're specifically a member of this team
+    const members = await storage.getTeamMembers(teamId);
+    return members.some(member => member.userId === userId);
+  } catch (error) {
+    console.error("Error checking team access:", error);
+    return false;
+  }
+}
+
+// Helper function to check if user has access to a program
+export async function hasProgramAccess(userId: string, programId: string): Promise<boolean> {
+  try {
+    const program = await storage.getProgram(programId);
+    if (!program) {
+      return false;
+    }
+
+    return await hasOrganizationAccess(userId, program.organizationId);
+  } catch (error) {
+    console.error("Error checking program access:", error);
+    return false;
+  }
+}
+
 // Middleware to verify team access
 export async function verifyTeamAccess(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const userId = req.user?.claims?.sub;
+    if (!req.currentUser) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const teamId = req.params.teamId || req.body.teamId;
 
     if (!teamId) {
       return res.status(400).json({ message: "Team ID required" });
     }
 
-    const team = await storage.getTeam(teamId);
-    if (!team) {
-      return res.status(404).json({ message: "Team not found" });
-    }
-
-    // Verify user has access to the team's organization
-    const org = await storage.getOrganization(team.organizationId);
-    if (!org) {
-      return res.status(404).json({ message: "Organization not found" });
-    }
-
-    if (org.ownerId !== userId) {
-      const members = await storage.getTeamMembers(teamId);
-      const isMember = members.some(member => member.userId === userId);
-      
-      if (!isMember) {
-        return res.status(403).json({ message: "Forbidden: not a member of this team" });
-      }
+    const hasAccess = await hasTeamAccess(req.currentUser.id, teamId);
+    if (!hasAccess) {
+      return res.status(403).json({ message: "Forbidden: not a member of this team" });
     }
 
     next();
   } catch (error) {
     console.error("Team access verification error:", error);
     res.status(500).json({ message: "Failed to verify team access" });
+  }
+}
+
+// Middleware to verify program access
+export async function verifyProgramAccess(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    if (!req.currentUser) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const programId = req.params.id || req.params.programId;
+
+    if (!programId) {
+      return res.status(400).json({ message: "Program ID required" });
+    }
+
+    const hasAccess = await hasProgramAccess(req.currentUser.id, programId);
+    if (!hasAccess) {
+      return res.status(403).json({ message: "Forbidden: program not in your organization" });
+    }
+
+    next();
+  } catch (error) {
+    console.error("Program access verification error:", error);
+    res.status(500).json({ message: "Failed to verify program access" });
   }
 }

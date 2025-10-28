@@ -141,23 +141,48 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
+  
+  // Handle token expiration
+  if (now > user.expires_at) {
+    const refreshToken = user.refresh_token;
+    if (!refreshToken) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
+
+    try {
+      const config = await getOidcConfig();
+      const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+      updateUserSession(user, tokenResponse);
+    } catch (error) {
+      res.status(401).json({ message: "Unauthorized" });
+      return;
+    }
   }
 
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-
+  // Fetch and attach full user context
   try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    updateUserSession(user, tokenResponse);
+    const userId = user.claims.sub;
+    const fullUser = await storage.getUser(userId);
+    
+    if (!fullUser) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    
+    // Get user's teams and organizations
+    const teams = await storage.getUserTeams(userId);
+    const organizationIds = [...new Set(teams.map(t => t.organizationId))];
+    
+    // Attach full context to request for use in route handlers
+    (req as any).currentUser = {
+      ...fullUser,
+      teams: teams,
+      organizationIds: organizationIds,
+    };
+    
     return next();
   } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
+    console.error("Error fetching user context:", error);
+    return res.status(500).json({ message: "Failed to load user context" });
   }
 };

@@ -313,12 +313,28 @@ export class DatabaseStorage implements IStorage {
       .orderBy(programWeeks.weekNumber);
   }
 
+  async getProgramWeek(id: string): Promise<ProgramWeek | undefined> {
+    const [week] = await db
+      .select()
+      .from(programWeeks)
+      .where(eq(programWeeks.id, id));
+    return week;
+  }
+
   async getProgramDays(weekId: string): Promise<ProgramDay[]> {
     return await db
       .select()
       .from(programDays)
       .where(eq(programDays.weekId, weekId))
       .orderBy(programDays.dayNumber);
+  }
+
+  async getProgramDay(id: string): Promise<ProgramDay | undefined> {
+    const [day] = await db
+      .select()
+      .from(programDays)
+      .where(eq(programDays.id, id));
+    return day;
   }
 
   async getProgramExercises(dayId: string): Promise<ProgramExercise[]> {
@@ -411,6 +427,14 @@ export class DatabaseStorage implements IStorage {
       .from(exerciseLogs)
       .where(eq(exerciseLogs.sessionId, sessionId))
       .orderBy(exerciseLogs.order);
+  }
+
+  async getExerciseLog(id: string): Promise<ExerciseLog | undefined> {
+    const [log] = await db
+      .select()
+      .from(exerciseLogs)
+      .where(eq(exerciseLogs.id, id));
+    return log;
   }
 
   async getExerciseLogSets(exerciseLogId: string): Promise<SetLog[]> {
