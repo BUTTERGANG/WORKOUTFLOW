@@ -64,7 +64,9 @@ export const organizations = pgTable("organizations", {
   ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_organizations_owner_id").on(table.ownerId),
+]);
 
 export const teams = pgTable("teams", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -73,7 +75,9 @@ export const teams = pgTable("teams", {
   organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_teams_organization_id").on(table.organizationId),
+]);
 
 // Junction table for team members (coaches and athletes)
 export const teamMembers = pgTable("team_members", {
@@ -82,7 +86,10 @@ export const teamMembers = pgTable("team_members", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   role: userRoleEnum("role").notNull(),
   joinedAt: timestamp("joined_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_team_members_team_id").on(table.teamId),
+  index("idx_team_members_user_id").on(table.userId),
+]);
 
 // ============================================
 // EXERCISE LIBRARY
@@ -100,7 +107,10 @@ export const exercises = pgTable("exercises", {
   createdBy: varchar("created_by").references(() => users.id, { onDelete: 'set null' }),
   organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: 'cascade' }), // null = global exercise
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_exercises_organization_id").on(table.organizationId),
+  index("idx_exercises_created_by").on(table.createdBy),
+]);
 
 // ============================================
 // PROGRAMS & WORKOUTS
@@ -117,14 +127,20 @@ export const programs = pgTable("programs", {
   isTemplate: boolean("is_template").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_programs_organization_id").on(table.organizationId),
+  index("idx_programs_created_by").on(table.createdBy),
+  index("idx_programs_created_at").on(table.createdAt),
+]);
 
 export const programWeeks = pgTable("program_weeks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   programId: varchar("program_id").notNull().references(() => programs.id, { onDelete: 'cascade' }),
   weekNumber: integer("week_number").notNull(),
   notes: text("notes"),
-});
+}, (table) => [
+  index("idx_program_weeks_program_id").on(table.programId),
+]);
 
 export const programDays = pgTable("program_days", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -132,7 +148,9 @@ export const programDays = pgTable("program_days", {
   dayNumber: integer("day_number").notNull(),
   name: varchar("name", { length: 255 }), // e.g., "Squat Day", "Upper Body"
   notes: text("notes"),
-});
+}, (table) => [
+  index("idx_program_days_week_id").on(table.weekId),
+]);
 
 export const programExercises = pgTable("program_exercises", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -144,7 +162,10 @@ export const programExercises = pgTable("program_exercises", {
   intensity: varchar("intensity", { length: 50 }), // e.g., "75%", "RPE 8"
   restSeconds: integer("rest_seconds"),
   notes: text("notes"),
-});
+}, (table) => [
+  index("idx_program_exercises_day_id").on(table.dayId),
+  index("idx_program_exercises_exercise_id").on(table.exerciseId),
+]);
 
 // Program assignments to athletes
 export const programAssignments = pgTable("program_assignments", {
@@ -155,7 +176,12 @@ export const programAssignments = pgTable("program_assignments", {
   status: varchar("status", { length: 50 }).default('active'), // 'active', 'completed', 'paused'
   assignedBy: varchar("assigned_by").notNull().references(() => users.id, { onDelete: 'cascade' }),
   assignedAt: timestamp("assigned_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_program_assignments_program_id").on(table.programId),
+  index("idx_program_assignments_athlete_id").on(table.athleteId),
+  index("idx_program_assignments_assigned_by").on(table.assignedBy),
+  index("idx_program_assignments_assigned_at").on(table.assignedAt),
+]);
 
 // ============================================
 // WORKOUT LOGGING
@@ -172,7 +198,12 @@ export const workoutSessions = pgTable("workout_sessions", {
   durationMinutes: integer("duration_minutes"),
   overallRpe: integer("overall_rpe"), // 1-10 scale
   notes: text("notes"),
-});
+}, (table) => [
+  index("idx_workout_sessions_athlete_id").on(table.athleteId),
+  index("idx_workout_sessions_program_day_id").on(table.programDayId),
+  index("idx_workout_sessions_scheduled_date").on(table.scheduledDate),
+  index("idx_workout_sessions_completed_at").on(table.completedAt),
+]);
 
 export const exerciseLogs = pgTable("exercise_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -180,7 +211,10 @@ export const exerciseLogs = pgTable("exercise_logs", {
   exerciseId: varchar("exercise_id").notNull().references(() => exercises.id, { onDelete: 'cascade' }),
   order: integer("order").notNull(),
   notes: text("notes"),
-});
+}, (table) => [
+  index("idx_exercise_logs_session_id").on(table.sessionId),
+  index("idx_exercise_logs_exercise_id").on(table.exerciseId),
+]);
 
 export const setLogs = pgTable("set_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -191,7 +225,9 @@ export const setLogs = pgTable("set_logs", {
   rpe: integer("rpe"), // 1-10 scale
   completed: boolean("completed").default(true),
   timestamp: timestamp("timestamp").defaultNow(),
-});
+}, (table) => [
+  index("idx_set_logs_exercise_log_id").on(table.exerciseLogId),
+]);
 
 // ============================================
 // MESSAGING
@@ -205,7 +241,12 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   readAt: timestamp("read_at"),
-});
+}, (table) => [
+  index("idx_messages_sender_id").on(table.senderId),
+  index("idx_messages_recipient_id").on(table.recipientId),
+  index("idx_messages_workout_session_id").on(table.workoutSessionId),
+  index("idx_messages_created_at").on(table.createdAt),
+]);
 
 // ============================================
 // RELATIONS
