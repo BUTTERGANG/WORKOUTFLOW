@@ -9,7 +9,7 @@ import {
   verifyProgramAccess,
   hasOrganizationAccess,
   hasProgramAccess,
-  type AuthRequest 
+  type AuthRequest,
 } from "./middleware/authorization";
 import {
   insertOrganizationSchema,
@@ -37,7 +37,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.get('/api/auth/user', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const user = await storage.getUser(userId);
       
       if (!user) {
@@ -57,7 +57,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       console.log("Creating organization for user:", userId, "with body:", req.body);
       const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
       const org = await storage.createOrganization(data);
@@ -72,7 +72,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const orgs = await storage.getUserOrganizations(userId);
       res.json(orgs);
     } catch (error) {
@@ -83,7 +83,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/organizations/my', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const userOrgs = await storage.getUserOrganizations(userId);
       res.json(userOrgs);
     } catch (error) {
@@ -263,7 +263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const data = insertProgramSchema.parse({ ...req.body, createdBy: userId });
       
       // Verify user owns the organization or is a coach with access
@@ -297,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const organizationId = req.query.organizationId as string;
       
       if (!organizationId) {
@@ -647,7 +647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/workout-sessions', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const data = insertWorkoutSessionSchema.parse({ ...req.body, athleteId: userId });
       const session = await storage.createWorkoutSession(data);
       res.json(session);
@@ -659,7 +659,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/workout-sessions', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const sessions = await storage.getAthleteWorkouts(userId);
       res.json(sessions);
     } catch (error) {
@@ -883,7 +883,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const data = insertMessageSchema.parse({ ...req.body, senderId: userId });
       const message = await storage.createMessage(data);
       res.json(message);
@@ -895,7 +895,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/messages/conversation/:otherUserId', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user!.claims.sub;
       const messages = await storage.getConversation(userId, req.params.otherUserId);
       res.json(messages);
     } catch (error) {

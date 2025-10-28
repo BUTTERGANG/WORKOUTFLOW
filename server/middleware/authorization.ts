@@ -1,16 +1,34 @@
 import { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 
-export interface AuthRequest extends Request {
-  user: any;
-  currentUser?: {
-    id: string;
-    email: string;
-    role: string;
-    teams: any[];
-    organizationIds: string[];
-  };
+// Extend Express Request to include authentication properties
+declare global {
+  namespace Express {
+    interface User {
+      claims: {
+        sub: string;
+        email?: string;
+        firstName?: string;
+        lastName?: string;
+        profileImageUrl?: string;
+      };
+      expires_at?: number;
+      refresh_token?: string;
+    }
+    
+    interface Request {
+      currentUser?: {
+        id: string;
+        email: string | null;
+        role: string;
+        teams: any[];
+        organizationIds: string[];
+      };
+    }
+  }
 }
+
+export type AuthRequest = Request;
 
 // Middleware to check if user has required role
 export function requireRole(allowedRoles: string[]) {
