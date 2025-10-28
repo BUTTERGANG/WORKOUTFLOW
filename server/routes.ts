@@ -27,12 +27,6 @@ import {
   insertMessageSchema,
 } from "@shared/schema";
 
-// Extend Express Request type to include user
-interface AuthRequest extends Request {
-  user: any;
-  currentUser?: any;
-}
-
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication middleware
   await setupAuth(app);
