@@ -76,6 +76,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/organizations/my', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const userOrgs = await storage.getUserOrganizations(userId);
+      res.json(userOrgs);
+    } catch (error) {
+      console.error("Error fetching user organizations:", error);
+      res.status(500).json({ message: "Failed to fetch organizations" });
+    }
+  });
+
   app.get('/api/organizations/:id', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const org = await storage.getOrganization(req.params.id);

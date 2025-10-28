@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useApp } from "@/contexts/AppContext";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, FileText, Calendar, Users } from "lucide-react";
@@ -16,18 +19,58 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import type { Program } from "@shared/schema";
 
 export default function Programs() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { currentOrganization } = useApp();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [programName, setProgramName] = useState("");
+  const [programDescription, setProgramDescription] = useState("");
+  const [programDuration, setProgramDuration] = useState("");
+
+  const { data: programs, isLoading: programsLoading } = useQuery<Program[]>({
+    queryKey: ['/api/programs', currentOrganization?.id],
+    enabled: !!currentOrganization,
+    queryFn: async () => {
+      const params = new URLSearchParams({ organizationId: currentOrganization!.id });
+      return fetch(`/api/programs?${params}`).then(res => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        return res.json();
+      });
+    },
+  });
+
+  const createProgramMutation = useMutation({
+    mutationFn: async (data: { name: string; description: string; durationWeeks: number; organizationId: string }) => {
+      return await apiRequest<Program>("/api/programs", {
+        method: "POST",
+        body: data,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      toast({ title: "Success", description: "Program created" });
+      setCreateDialogOpen(false);
+      setProgramName("");
+      setProgramDescription("");
+      setProgramDuration("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to create program", variant: "destructive" });
+    },
+  });
+
+  const handleCreateProgram = () => {
+    if (!programName.trim() || !programDuration || !currentOrganization) return;
+    createProgramMutation.mutate({
+      name: programName,
+      description: programDescription,
+      durationWeeks: parseInt(programDuration),
+      organizationId: currentOrganization.id,
+    });
+  };
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -105,6 +148,8 @@ export default function Programs() {
                   <Input
                     id="name"
                     placeholder="e.g., 12-Week Strength Block"
+                    value={programName}
+                    onChange={(e) => setProgramName(e.target.value)}
                     data-testid="input-program-name"
                   />
                 </div>
@@ -114,6 +159,8 @@ export default function Programs() {
                     id="description"
                     placeholder="Describe the program goals and structure..."
                     rows={3}
+                    value={programDescription}
+                    onChange={(e) => setProgramDescription(e.target.value)}
                     data-testid="input-program-description"
                   />
                 </div>
@@ -123,6 +170,8 @@ export default function Programs() {
                     id="duration"
                     type="number"
                     placeholder="12"
+                    value={programDuration}
+                    onChange={(e) => setProgramDuration(e.target.value)}
                     min="1"
                     max="52"
                     data-testid="input-program-duration"
@@ -153,38 +202,61 @@ export default function Programs() {
                   Cancel
                 </Button>
                 <Button
-                  onClick={() => {
-                    toast({
-                      title: "Program created",
-                      description: "Your training program has been created successfully.",
-                    });
-                    setCreateDialogOpen(false);
-                  }}
+                  onClick={handleCreateProgram}
+                  disabled={createProgramMutation.isPending}
                   data-testid="button-save-program"
                 >
-                  Create Program
+                  {createProgramMutation.isPending ? "Creating..." : "Create Program"}
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         </div>
 
-        {/* Programs List - Empty State */}
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16">
-          <FileText className="mb-4 h-16 w-16 text-muted-foreground" />
-          <h3 className="mb-2 text-xl font-semibold">No programs yet</h3>
-          <p className="mb-6 text-center text-muted-foreground">
-            Get started by creating your first training program
-          </p>
-          <Button
-            onClick={() => setCreateDialogOpen(true)}
-            data-testid="button-create-first-program"
-            className="gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Create Your First Program
-          </Button>
-        </div>
+        {/* Programs List */}
+        {programsLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+              <p className="text-muted-foreground">Loading programs...</p>
+            </div>
+          </div>
+        ) : programs && programs.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {programs.map((program) => (
+              <Card key={program.id} className="hover-elevate">
+                <CardHeader>
+                  <CardTitle className="text-lg">{program.name}</CardTitle>
+                  <CardDescription>{program.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-4 w-4" />
+                      <span>{program.durationWeeks} weeks</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16">
+            <FileText className="mb-4 h-16 w-16 text-muted-foreground" />
+            <h3 className="mb-2 text-xl font-semibold">No programs yet</h3>
+            <p className="mb-6 text-center text-muted-foreground">
+              Get started by creating your first training program
+            </p>
+            <Button
+              onClick={() => setCreateDialogOpen(true)}
+              data-testid="button-create-first-program"
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Create Your First Program
+            </Button>
+          </div>
+        )}
 
         {/* Sample Program Cards (hidden for now since empty) */}
         <div className="mt-8 hidden grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">

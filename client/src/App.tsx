@@ -5,10 +5,12 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AppProvider } from "@/contexts/AppContext";
 import { useAuth } from "@/hooks/useAuth";
 
 // Pages
 import Landing from "@/pages/landing";
+import Onboarding from "@/pages/onboarding";
 import Dashboard from "@/pages/dashboard";
 import Programs from "@/pages/programs";
 import Workout from "@/pages/workout";
@@ -42,6 +44,7 @@ function Router() {
         <main className="flex-1 overflow-hidden">
           <Switch>
             <Route path="/" component={Dashboard} />
+            <Route path="/onboarding" component={Onboarding} />
             <Route path="/programs" component={Programs} />
             <Route path="/workout" component={Workout} />
             <Route path="/athletes" component={Athletes} />
@@ -66,12 +69,14 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider style={style as React.CSSProperties}>
-          <div className="flex h-screen w-full">
-            <Router />
-          </div>
-        </SidebarProvider>
-        <Toaster />
+        <AppProvider>
+          <SidebarProvider style={style as React.CSSProperties}>
+            <div className="flex h-screen w-full">
+              <Router />
+            </div>
+          </SidebarProvider>
+          <Toaster />
+        </AppProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

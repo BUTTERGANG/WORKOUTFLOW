@@ -1,13 +1,25 @@
 import { useEffect } from "react";
+import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useApp } from "@/contexts/AppContext";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, FileText, TrendingUp, Activity } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { Organization } from "@shared/schema";
 
 export default function Dashboard() {
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { currentOrganization, setCurrentOrganization } = useApp();
+
+  // Fetch user's organizations
+  const { data: organizations, isLoading: orgsLoading } = useQuery<Organization[]>({
+    queryKey: ['/api/organizations/my'],
+    enabled: isAuthenticated && !!user,
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -22,6 +34,20 @@ export default function Dashboard() {
       return;
     }
   }, [isAuthenticated, isLoading, toast]);
+
+  // Auto-select first organization if none selected
+  useEffect(() => {
+    if (!orgsLoading && organizations && organizations.length > 0 && !currentOrganization) {
+      setCurrentOrganization(organizations[0]);
+    }
+  }, [organizations, orgsLoading, currentOrganization, setCurrentOrganization]);
+
+  // Redirect to onboarding if no organizations
+  useEffect(() => {
+    if (!orgsLoading && organizations && organizations.length === 0) {
+      setLocation("/onboarding");
+    }
+  }, [organizations, orgsLoading, setLocation]);
 
   if (isLoading) {
     return (
