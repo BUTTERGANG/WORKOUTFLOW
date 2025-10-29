@@ -105,10 +105,16 @@ export async function hasTeamAccess(userId: string, teamId: string): Promise<boo
       return false;
     }
 
-    // Check if user has access to the team's organization
+    // Check if user has access to the team's organization (owner or member)
     const hasOrgAccess = await hasOrganizationAccess(userId, team.organizationId);
     if (!hasOrgAccess) {
       return false;
+    }
+
+    // Organization owners and coaches automatically have team access
+    const org = await storage.getOrganization(team.organizationId);
+    if (org && org.ownerId === userId) {
+      return true;
     }
 
     // Also check if they're specifically a member of this team

@@ -30,6 +30,7 @@ export default function Onboarding() {
     onSuccess: (org) => {
       setCurrentOrganization(org);
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] }); // Refresh user role
       toast({
         title: "Success",
         description: "Organization created successfully",

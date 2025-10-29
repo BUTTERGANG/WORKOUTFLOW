@@ -49,6 +49,7 @@ export interface IStorage {
   // User operations (Required for Replit Auth)
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
+  updateUserRole(userId: string, role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete'): Promise<void>;
   getUserTeams(userId: string): Promise<Team[]>;
   
   // Organization operations
@@ -122,6 +123,13 @@ export class DatabaseStorage implements IStorage {
       })
       .returning();
     return user;
+  }
+
+  async updateUserRole(userId: string, role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete'): Promise<void> {
+    await db
+      .update(users)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(users.id, userId));
   }
 
   async getUserTeams(userId: string): Promise<Team[]> {

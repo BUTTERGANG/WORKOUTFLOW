@@ -61,6 +61,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("Creating organization for user:", userId, "with body:", req.body);
       const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
       const org = await storage.createOrganization(data);
+      
+      // Update user role to admin (organization owner)
+      await storage.updateUserRole(userId, 'admin');
+      
       console.log("Organization created successfully:", org.id);
       res.json(org);
     } catch (error: any) {
