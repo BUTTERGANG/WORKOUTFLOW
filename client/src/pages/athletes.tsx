@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useApp } from "@/contexts/AppContext";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { UserPlus, Users, Search, Mail } from "lucide-react";
+import { UserPlus, Users, Search, Mail, Calendar, Target } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -17,12 +20,124 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { User, TeamMember, Program, ProgramAssignment } from "@shared/schema";
 
 export default function Athletes() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { currentOrganization, currentTeam } = useApp();
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedAthlete, setSelectedAthlete] = useState<TeamMember | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [selectedProgram, setSelectedProgram] = useState("");
+  const [startDate, setStartDate] = useState("");
+
+  // Fetch team members
+  const { data: teamMembers } = useQuery<(TeamMember & { user: User })[]>({
+    queryKey: ['/api/teams', currentTeam?.id, 'members'],
+    enabled: !!currentTeam,
+    queryFn: async () => {
+      const res = await fetch(`/api/teams/${currentTeam!.id}/members`);
+      if (!res.ok) throw new Error('Failed to fetch members');
+      return res.json();
+    },
+  });
+
+  // Fetch programs for assignment
+  const { data: programs } = useQuery<Program[]>({
+    queryKey: ['/api/programs', currentOrganization?.id],
+    enabled: !!currentOrganization,
+  });
+
+  // Fetch program assignments
+  const { data: assignments } = useQuery<(ProgramAssignment & { program: Program })[]>({
+    queryKey: ['/api/program-assignments', currentTeam?.id],
+    enabled: !!currentTeam,
+    queryFn: async () => {
+      const res = await fetch(`/api/program-assignments?teamId=${currentTeam!.id}`);
+      if (!res.ok) throw new Error('Failed to fetch assignments');
+      return res.json();
+    },
+  });
+
+  // Add team member mutation
+  const addMemberMutation = useMutation({
+    mutationFn: async (data: { teamId: string; email: string; role: string }) => {
+      return await apiRequest<TeamMember>(`/api/teams/${data.teamId}/members`, {
+        method: "POST",
+        body: { email: data.email, role: data.role },
+      });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/teams', variables.teamId, 'members'] });
+      toast({ title: "Success", description: "Team member invited successfully" });
+      setInviteDialogOpen(false);
+      setNewMemberEmail("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to add team member",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Assign program mutation
+  const assignProgramMutation = useMutation({
+    mutationFn: async (data: { programId: string; athleteId: string; startDate: string }) => {
+      return await apiRequest<ProgramAssignment>(`/api/program-assignments`, {
+        method: "POST",
+        body: data,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/program-assignments'] });
+      if (currentTeam) {
+        queryClient.invalidateQueries({ queryKey: ['/api/program-assignments', currentTeam.id] });
+      }
+      toast({ title: "Success", description: "Program assigned successfully" });
+      setAssignDialogOpen(false);
+      setSelectedAthlete(null);
+      setSelectedProgram("");
+      setStartDate("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to assign program",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleAddMember = () => {
+    if (!newMemberEmail.trim() || !currentTeam) return;
+    addMemberMutation.mutate({
+      teamId: currentTeam.id,
+      email: newMemberEmail,
+      role: 'athlete',
+    });
+  };
+
+  const handleAssignProgram = () => {
+    if (!selectedProgram || !selectedAthlete || !startDate) return;
+    assignProgramMutation.mutate({
+      programId: selectedProgram,
+      athleteId: selectedAthlete.userId,
+      startDate,
+    });
+  };
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -68,6 +183,33 @@ export default function Athletes() {
     );
   }
 
+  if (!currentTeam) {
+    return (
+      <div className="flex h-screen items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>No Team Selected</CardTitle>
+            <CardDescription>
+              Please select a team to manage athletes.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  const filteredMembers = teamMembers?.filter((member) =>
+    member.user &&
+    (member.user.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      member.user.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      member.user.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+  // Get assignment for athlete
+  const getAthleteAssignment = (athleteId: string) => {
+    return assignments?.find((a) => a.athleteId === athleteId && a.status === 'active');
+  };
+
   return (
     <div className="h-full overflow-auto">
       <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
@@ -79,19 +221,19 @@ export default function Athletes() {
               Manage your team members and track their progress
             </p>
           </div>
-          
+
           <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
             <DialogTrigger asChild>
               <Button data-testid="button-invite-athlete" className="gap-2">
                 <UserPlus className="h-4 w-4" />
-                Invite Athlete
+                Add Athlete
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle>Invite Athlete</DialogTitle>
+                <DialogTitle>Add Athlete to Team</DialogTitle>
                 <DialogDescription>
-                  Send an invitation to join your team
+                  Add an existing user by email or send invitation
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -101,46 +243,22 @@ export default function Athletes() {
                     id="email"
                     type="email"
                     placeholder="athlete@example.com"
+                    value={newMemberEmail}
+                    onChange={(e) => setNewMemberEmail(e.target.value)}
                     data-testid="input-athlete-email"
                   />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input
-                    id="firstName"
-                    placeholder="John"
-                    data-testid="input-athlete-firstname"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input
-                    id="lastName"
-                    placeholder="Doe"
-                    data-testid="input-athlete-lastname"
-                  />
+                  <p className="text-xs text-muted-foreground">
+                    If the user exists, they'll be added immediately. Otherwise, an invitation will be sent.
+                  </p>
                 </div>
               </div>
               <DialogFooter>
                 <Button
-                  variant="outline"
-                  onClick={() => setInviteDialogOpen(false)}
-                  data-testid="button-cancel-invite"
+                  onClick={handleAddMember}
+                  disabled={!newMemberEmail.trim() || addMemberMutation.isPending}
+                  data-testid="button-submit-add-athlete"
                 >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    toast({
-                      title: "Invitation sent",
-                      description: "The athlete will receive an email invitation.",
-                    });
-                    setInviteDialogOpen(false);
-                  }}
-                  data-testid="button-send-invite"
-                >
-                  <Mail className="mr-2 h-4 w-4" />
-                  Send Invitation
+                  {addMemberMutation.isPending ? "Adding..." : "Add Athlete"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -155,63 +273,136 @@ export default function Athletes() {
               placeholder="Search athletes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
+              className="pl-10"
               data-testid="input-search-athletes"
             />
           </div>
         </div>
 
-        {/* Empty State */}
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16">
-          <Users className="mb-4 h-16 w-16 text-muted-foreground" />
-          <h3 className="mb-2 text-xl font-semibold">No athletes yet</h3>
-          <p className="mb-6 text-center text-muted-foreground">
-            Invite your first athlete to start coaching
-          </p>
-          <Button
-            onClick={() => setInviteDialogOpen(true)}
-            data-testid="button-invite-first-athlete"
-            className="gap-2"
-          >
-            <UserPlus className="h-4 w-4" />
-            Invite Your First Athlete
-          </Button>
-        </div>
-
-        {/* Sample Athlete Cards (hidden for now since empty) */}
-        <div className="mt-8 hidden grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Card className="hover-elevate cursor-pointer">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Avatar className="h-12 w-12">
-                  <AvatarImage src="" style={{ objectFit: 'cover' }} />
-                  <AvatarFallback>JD</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 overflow-hidden">
-                  <CardTitle className="truncate text-base">John Doe</CardTitle>
-                  <CardDescription className="truncate">Active Program</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Compliance</span>
-                  <span className="font-medium">95%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Last Workout</span>
-                  <span className="font-medium">Today</span>
-                </div>
-                <div className="mt-3">
-                  <Badge variant="outline" className="text-xs">
-                    12-Week Strength
-                  </Badge>
-                </div>
-              </div>
+        {/* Athletes Grid */}
+        {!teamMembers || teamMembers.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Users className="mb-4 h-12 w-12 text-muted-foreground" />
+              <h3 className="mb-2 text-lg font-semibold">No Athletes Yet</h3>
+              <p className="mb-4 text-center text-sm text-muted-foreground">
+                Add athletes to your team to get started
+              </p>
+              <Button onClick={() => setInviteDialogOpen(true)} variant="outline">
+                Add Athlete
+              </Button>
             </CardContent>
           </Card>
-        </div>
+        ) : (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {filteredMembers?.map((member) => {
+              const assignment = getAthleteAssignment(member.userId);
+              return (
+                <Card key={member.id} className="hover-elevate" data-testid={`card-athlete-${member.userId}`}>
+                  <CardHeader>
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={member.user.profileImageUrl || undefined} />
+                        <AvatarFallback>
+                          {member.user.firstName?.[0]}{member.user.lastName?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <CardTitle className="text-base">
+                          {member.user.firstName} {member.user.lastName}
+                        </CardTitle>
+                        <p className="text-sm text-muted-foreground">{member.user.email}</p>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary">{member.role}</Badge>
+                    </div>
+
+                    {assignment ? (
+                      <div className="rounded-lg bg-muted/50 p-3 space-y-2">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Target className="h-4 w-4 text-primary" />
+                          Current Program
+                        </div>
+                        <p className="text-sm">{assignment.program.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Started: {new Date(assignment.startDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ) : (
+                      <Button
+                        onClick={() => {
+                          setSelectedAthlete(member);
+                          setAssignDialogOpen(true);
+                        }}
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        data-testid={`button-assign-program-${member.userId}`}
+                      >
+                        <Calendar className="h-4 w-4 mr-1" />
+                        Assign Program
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Assign Program Dialog */}
+        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Assign Program</DialogTitle>
+              <DialogDescription>
+                Assign a training program to athlete
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="program">Select Program</Label>
+                <Select value={selectedProgram} onValueChange={setSelectedProgram}>
+                  <SelectTrigger data-testid="select-program">
+                    <SelectValue placeholder="Choose a program..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {programs?.map((program) => (
+                      <SelectItem key={program.id} value={program.id}>
+                        {program.name} ({program.durationWeeks} weeks)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="startDate">Start Date</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  data-testid="input-start-date"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAssignProgram}
+                disabled={!selectedProgram || !startDate || assignProgramMutation.isPending}
+                data-testid="button-submit-assign-program"
+              >
+                {assignProgramMutation.isPending ? "Assigning..." : "Assign Program"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

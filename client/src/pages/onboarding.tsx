@@ -80,7 +80,7 @@ export default function Onboarding() {
 
   const handleCreateTeam = (e: React.FormEvent) => {
     e.preventDefault();
-    if (teamName.trim() && setCurrentOrganization) {
+    if (teamName.trim()) {
       const org = JSON.parse(localStorage.getItem('currentOrganization') || '{}');
       if (org.id) {
         createTeamMutation.mutate({ organizationId: org.id, name: teamName });
