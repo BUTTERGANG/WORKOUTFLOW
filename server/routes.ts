@@ -173,7 +173,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/teams/:teamId/members', isAuthenticated, requireRole(['admin', 'head_coach']), verifyTeamAccess, async (req: AuthRequest, res) => {
     try {
-      const data = insertTeamMemberSchema.parse({ ...req.body, teamId: req.params.teamId });
+      const { email, role } = req.body;
+      
+      // Look up user by email, or create placeholder account
+      let user = await storage.getUserByEmail(email);
+      if (!user) {
+        // Auto-create user account for invitation
+        // Generate a unique ID for the invited user (will be replaced when they actually log in)
+        const invitedUserId = `invited_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        user = await storage.upsertUser({
+          id: invitedUserId,
+          email,
+          firstName: null,
+          lastName: null,
+          profileImageUrl: null,
+        });
+      }
+      
+      // Add user to team
+      const data = insertTeamMemberSchema.parse({ 
+        userId: user.id, 
+        teamId: req.params.teamId, 
+        role 
+      });
       const member = await storage.addTeamMember(data);
       res.json(member);
     } catch (error) {
