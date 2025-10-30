@@ -99,6 +99,31 @@ export interface IStorage {
   createMessage(message: InsertMessage): Promise<Message>;
   getConversation(userId1: string, userId2: string): Promise<Message[]>;
   markMessageAsRead(id: string): Promise<void>;
+  
+  // DELETE operations
+  deleteOrganization(id: string): Promise<void>;
+  deleteTeam(id: string): Promise<void>;
+  removeTeamMember(teamId: string, userId: string): Promise<void>;
+  deleteProgram(id: string): Promise<void>;
+  deleteExercise(id: string): Promise<void>;
+  deleteWorkoutSession(id: string): Promise<void>;
+  deleteExerciseLog(id: string): Promise<void>;
+  deleteSetLog(id: string): Promise<void>;
+  
+  // UPDATE operations
+  updateExercise(id: string, data: Partial<Exercise>): Promise<Exercise | undefined>;
+  updateProgram(id: string, data: Partial<Program>): Promise<Program | undefined>;
+  updateProgramWeek(id: string, data: Partial<ProgramWeek>): Promise<ProgramWeek | undefined>;
+  updateProgramDay(id: string, data: Partial<ProgramDay>): Promise<ProgramDay | undefined>;
+  updateProgramExercise(id: string, data: Partial<ProgramExercise>): Promise<ProgramExercise | undefined>;
+  updateOrganization(id: string, data: Partial<Organization>): Promise<Organization | undefined>;
+  updateTeam(id: string, data: Partial<Team>): Promise<Team | undefined>;
+  
+  // Additional GET operations
+  getProgramExercise(id: string): Promise<ProgramExercise | undefined>;
+  getProgramWeek(id: string): Promise<ProgramWeek | undefined>;
+  getProgramDay(id: string): Promise<ProgramDay | undefined>;
+  getExerciseLog(id: string): Promise<ExerciseLog | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -486,6 +511,169 @@ export class DatabaseStorage implements IStorage {
       .update(messages)
       .set({ readAt: new Date() })
       .where(eq(messages.id, id));
+  }
+
+  // ============================================
+  // DELETE OPERATIONS
+  // ============================================
+
+  async deleteOrganization(id: string): Promise<void> {
+    await db.delete(organizations).where(eq(organizations.id, id));
+  }
+
+  async deleteTeam(id: string): Promise<void> {
+    await db.delete(teams).where(eq(teams.id, id));
+  }
+
+  async removeTeamMember(teamId: string, userId: string): Promise<void> {
+    await db
+      .delete(teamMembers)
+      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
+  }
+
+  async deleteProgram(id: string): Promise<void> {
+    await db.delete(programs).where(eq(programs.id, id));
+  }
+
+  async deleteExercise(id: string): Promise<void> {
+    await db.delete(exercises).where(eq(exercises.id, id));
+  }
+
+  async deleteWorkoutSession(id: string): Promise<void> {
+    await db.delete(workoutSessions).where(eq(workoutSessions.id, id));
+  }
+
+  async deleteExerciseLog(id: string): Promise<void> {
+    await db.delete(exerciseLogs).where(eq(exerciseLogs.id, id));
+  }
+
+  async deleteSetLog(id: string): Promise<void> {
+    await db.delete(setLogs).where(eq(setLogs.id, id));
+  }
+
+  // ============================================
+  // UPDATE OPERATIONS
+  // ============================================
+
+  async updateExercise(
+    id: string,
+    data: Partial<Exercise>
+  ): Promise<Exercise | undefined> {
+    const [exercise] = await db
+      .update(exercises)
+      .set(data)
+      .where(eq(exercises.id, id))
+      .returning();
+    return exercise;
+  }
+
+  async updateProgram(
+    id: string,
+    data: Partial<Program>
+  ): Promise<Program | undefined> {
+    const [program] = await db
+      .update(programs)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(programs.id, id))
+      .returning();
+    return program;
+  }
+
+  async updateProgramWeek(
+    id: string,
+    data: Partial<ProgramWeek>
+  ): Promise<ProgramWeek | undefined> {
+    const [week] = await db
+      .update(programWeeks)
+      .set(data)
+      .where(eq(programWeeks.id, id))
+      .returning();
+    return week;
+  }
+
+  async updateProgramDay(
+    id: string,
+    data: Partial<ProgramDay>
+  ): Promise<ProgramDay | undefined> {
+    const [day] = await db
+      .update(programDays)
+      .set(data)
+      .where(eq(programDays.id, id))
+      .returning();
+    return day;
+  }
+
+  async updateProgramExercise(
+    id: string,
+    data: Partial<ProgramExercise>
+  ): Promise<ProgramExercise | undefined> {
+    const [exercise] = await db
+      .update(programExercises)
+      .set(data)
+      .where(eq(programExercises.id, id))
+      .returning();
+    return exercise;
+  }
+
+  async updateOrganization(
+    id: string,
+    data: Partial<Organization>
+  ): Promise<Organization | undefined> {
+    const [org] = await db
+      .update(organizations)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(organizations.id, id))
+      .returning();
+    return org;
+  }
+
+  async updateTeam(
+    id: string,
+    data: Partial<Team>
+  ): Promise<Team | undefined> {
+    const [team] = await db
+      .update(teams)
+      .set({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .where(eq(teams.id, id))
+      .returning();
+    return team;
+  }
+
+  // ============================================
+  // ADDITIONAL GET OPERATIONS
+  // ============================================
+
+  async getProgramExercise(id: string): Promise<ProgramExercise | undefined> {
+    const [exercise] = await db
+      .select()
+      .from(programExercises)
+      .where(eq(programExercises.id, id));
+    return exercise;
+  }
+
+  async getProgramWeek(id: string): Promise<ProgramWeek | undefined> {
+    const [week] = await db
+      .select()
+      .from(programWeeks)
+      .where(eq(programWeeks.id, id));
+    return week;
+  }
+
+  async getProgramDay(id: string): Promise<ProgramDay | undefined> {
+    const [day] = await db
+      .select()
+      .from(programDays)
+      .where(eq(programDays.id, id));
+    return day;
   }
 }
 
