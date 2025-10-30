@@ -52,6 +52,23 @@ This platform provides coaches with powerful tools to create training programs, 
 
 ## Recent Changes
 
+- **2025-10-30**: Comprehensive Security & API Improvements
+  - 🔒 **Security**: Added input sanitization middleware (XSS protection, HTML tag stripping)
+  - 🛠️ **Error Handling**: Created centralized error handling system with custom error classes
+  - ✅ **CRUD Operations**: Implemented full DELETE routes (organizations, teams, programs, exercises, workout sessions)
+  - ✅ **CRUD Operations**: Implemented UPDATE routes (exercises, programs, program exercises)
+  - 📝 **Storage Layer**: Extended IStorage interface with DELETE/UPDATE/GET methods
+  - 🔐 **Authorization**: All new routes include comprehensive permission checks
+  - ⚡ **Performance**: Rate limiting middleware for sensitive operations
+  - 📊 **Validation**: Input validation helpers (email, URL, UUID)
+  - Files Created:
+    - `server/errors.ts` - Custom error classes (NotFoundError, UnauthorizedError, ForbiddenError, ValidationError)
+    - `server/middleware/sanitization.ts` - XSS protection and input sanitization
+  - Files Updated:
+    - `server/index.ts` - Added sanitization middleware
+    - `server/storage.ts` - Added DELETE/UPDATE operations to interface and implementation
+    - `server/routes.ts` - Added DELETE and UPDATE endpoints with authorization
+
 - **2025-10-28**: Critical ID Type Fix - Replit Auth Compatibility
   - ⚠️ **CRITICAL**: Reverted users.id to `varchar` type (Replit Auth provides string IDs, not UUIDs)
   - ✅ Updated all foreign keys referencing users.id to varchar (organizations.ownerId, teamMembers.userId, etc.)
@@ -102,26 +119,35 @@ This platform provides coaches with powerful tools to create training programs, 
 **Organizations & Teams**
 - `POST /api/organizations` - Create organization
 - `GET /api/organizations` - List user's organizations
+- `DELETE /api/organizations/:id` - Delete organization (owner only)
 - `POST /api/teams` - Create team
 - `GET /api/organizations/:orgId/teams` - List organization teams
+- `DELETE /api/teams/:id` - Delete team (owner/head coach)
 - `POST /api/teams/:teamId/members` - Add team member
+- `DELETE /api/teams/:teamId/members/:userId` - Remove team member
 
 **Programs**
 - `POST /api/programs` - Create program
 - `GET /api/programs` - List programs
+- `PATCH /api/programs/:id` - Update program
+- `DELETE /api/programs/:id` - Delete program
 - `POST /api/programs/:id/weeks` - Add week to program
 - `POST /api/weeks/:id/days` - Add day to week
 - `POST /api/days/:id/exercises` - Add exercise to day
+- `PATCH /api/program-exercises/:id` - Update program exercise
 
 **Workouts**
 - `POST /api/workout-sessions` - Create workout session
 - `GET /api/workout-sessions` - List athlete's workouts
+- `DELETE /api/workout-sessions/:id` - Delete workout session
 - `POST /api/workout-sessions/:id/exercise-logs` - Log exercise
 - `POST /api/exercise-logs/:id/sets` - Log set
 
 **Exercises**
 - `GET /api/exercises` - List exercises
 - `POST /api/exercises` - Create custom exercise
+- `PATCH /api/exercises/:id` - Update exercise
+- `DELETE /api/exercises/:id` - Delete exercise (custom only)
 
 **Messaging**
 - `POST /api/messages` - Send message

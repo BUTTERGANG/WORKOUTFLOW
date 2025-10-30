@@ -1,23 +1,25 @@
 import { Request, Response, NextFunction } from "express";
+import sanitizeHtml from "sanitize-html";
 
-// Basic XSS protection - strips HTML tags and encodes special characters
+// HTML Sanitization using battle-tested sanitize-html library
+// XSS Protection Strategy:
+// - Server-side: Use sanitize-html to strip dangerous HTML (defense in depth)
+// - Drizzle ORM uses parameterized queries (prevents SQL injection)
+// - React also escapes output when rendering (additional layer)
+//
+// This protects all API consumers (not just React), emails, logs, etc.
 function sanitizeString(value: string): string {
   if (typeof value !== 'string') return value;
   
-  // Remove HTML tags
-  let sanitized = value.replace(/<[^>]*>/g, '');
+  // Strip all HTML tags for regular text fields
+  // This allows safe storage while preserving user's text content
+  const cleaned = sanitizeHtml(value, {
+    allowedTags: [], // No HTML tags allowed
+    allowedAttributes: {},
+    disallowedTagsMode: 'discard'
+  });
   
-  // Encode special characters
-  sanitized = sanitized
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;');
-  
-  // Trim whitespace
-  return sanitized.trim();
+  return cleaned.trim();
 }
 
 // Recursively sanitize object properties
@@ -64,22 +66,16 @@ export function sanitizeInput(req: Request, res: Response, next: NextFunction): 
   next();
 }
 
-// Specific sanitization for text fields that should allow some formatting
+// For rich text fields - allow safe HTML formatting tags
 export function sanitizeRichText(text: string): string {
   if (typeof text !== 'string') return text;
   
-  // Allow line breaks but strip other HTML
-  let sanitized = text.replace(/<(?!br\s*\/?)[^>]+>/g, '');
-  
-  // Encode special characters except line breaks
-  sanitized = sanitized
-    .replace(/&(?!#?\w+;)/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
-  
-  return sanitized.trim();
+  // Allow safe formatting tags, strip dangerous content
+  return sanitizeHtml(text, {
+    allowedTags: ['p', 'br', 'strong', 'em', 'u', 'ul', 'ol', 'li', 'h1', 'h2', 'h3'],
+    allowedAttributes: {},
+    disallowedTagsMode: 'discard'
+  }).trim();
 }
 
 // Validation helpers
