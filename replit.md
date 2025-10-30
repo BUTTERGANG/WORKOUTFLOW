@@ -52,6 +52,15 @@ This platform provides coaches with powerful tools to create training programs, 
 
 ## Recent Changes
 
+- **2025-10-30**: Database Migration to NeonDB ✅
+  - 🗄️ **Database**: Migrated from local PostgreSQL to NeonDB (serverless)
+  - ✅ Schema successfully pushed to NeonDB
+  - ✅ Database seeded with 34 global exercises
+  - ✅ Application verified working with NeonDB connection
+  - 📝 Updated configuration:
+    - `server/db.ts` now uses `NEON_DATABASE` environment variable
+    - All database operations running on NeonDB infrastructure
+  
 - **2025-10-30**: Production-Ready Security & API Improvements ✅
   - 🔒 **Security**: Implemented battle-tested `sanitize-html` library for stored XSS prevention
     - Defense in depth: protects all API consumers (React, emails, logs, external clients)
@@ -113,7 +122,8 @@ This platform provides coaches with powerful tools to create training programs, 
 ## Development
 
 ### Environment Setup
-- PostgreSQL database provisioned
+- **Database**: NeonDB (serverless PostgreSQL)
+- **Connection**: Using `NEON_DATABASE` secret
 - Replit Auth configured
 - Session management with PostgreSQL storage
 
