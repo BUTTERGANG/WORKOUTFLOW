@@ -42,6 +42,14 @@ export default function Programs() {
 
   const { data: programs, isLoading: programsLoading } = useQuery<Program[]>({
     queryKey: ['/api/programs', currentOrganization?.id],
+    queryFn: async () => {
+      if (!currentOrganization) return [];
+      const res = await fetch(`/api/programs?organizationId=${currentOrganization.id}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch programs');
+      return res.json();
+    },
     enabled: !!currentOrganization,
   });
 

@@ -2,195 +2,233 @@
 
 ## Design Approach
 
-**Selected System**: Material Design 3  
-**Rationale**: Ideal for data-heavy productivity applications with strong mobile and desktop experiences. Provides robust component patterns for forms, tables, charts, and real-time data entry.
+**Selected System**: Material Design 3 (Dark Theme)  
+**Rationale**: Optimal for data-heavy mobile productivity with one-handed operation. Dark theme reduces eye strain during gym sessions and extends battery life.
 
 **Core Principles**:
-- Efficiency over aesthetics - minimize clicks and cognitive load
-- Mobile-first workout logging, desktop-optimized program building
-- Clear information hierarchy for quick data scanning
-- Consistent patterns across organization/team/athlete contexts
+- One-handed mobile operation - critical actions within thumb reach
+- Dark UI with strategic blue accents for hierarchy
+- Minimal navigation - focused workout flow
+- Large touch targets optimized for sweaty hands/gloves
+- Information density balanced with breathing room
+
+---
+
+## Dark Theme Color System
+
+**Background Hierarchy**:
+- Surface: #121212 (base container)
+- Surface variant: #1E1E1E (elevated cards)
+- Surface bright: #2A2A2A (active inputs, modals)
+
+**Accent & Interactive**:
+- Primary blue: #4A9EFF (CTAs, active states, progress)
+- Primary variant: #2C7DD9 (pressed states)
+- Success: #4CAF50 (completed sets, PRs)
+- Warning: #FFA726 (RPE 8-9)
+- Error: #EF5350 (failed lifts, RPE 10)
+
+**Text Contrast**:
+- High emphasis: #FFFFFF (headings, active data)
+- Medium emphasis: #B3B3B3 (body text, labels)
+- Disabled: #666666 (inactive elements)
 
 ---
 
 ## Typography System
 
-**Font Family**: Roboto (primary), Roboto Mono (data/numbers)
+**Font Family**: Roboto (UI), Roboto Mono (data/numbers)
 
-**Hierarchy**:
-- Display: 32px/40px, semi-bold - Dashboard headers, page titles
-- Headline: 24px/32px, medium - Section headers, card titles
-- Title: 20px/28px, medium - Subsections, form labels
-- Body: 16px/24px, regular - Primary content, descriptions
-- Caption: 14px/20px, regular - Metadata, timestamps, helper text
-- Data: 16px/24px, Roboto Mono, medium - Sets, reps, weights, RPE values
+**Mobile Hierarchy**:
+- Display: 28px/36px, bold - Session headers
+- Headline: 20px/28px, medium - Exercise names
+- Body Large: 18px/26px, regular - Form labels, instructions
+- Body: 16px/24px, regular - Descriptions, comments
+- Data Large: 24px/32px, Roboto Mono, bold - Weight/reps input values
+- Data Small: 16px/24px, Roboto Mono, medium - Set history, timers
 
 ---
 
 ## Layout System
 
-**Spacing Units**: Tailwind 2, 3, 4, 6, 8, 12, 16 (focus on 4, 8, 16 for primary layouts)
+**Spacing Units**: Tailwind 3, 4, 6, 8, 12, 16 (primary: 4, 8)
 
-**Grid Structure**:
-- Desktop: 12-column grid, max-w-7xl container
-- Tablet: 8-column grid, full-width with padding
-- Mobile: 4-column grid, edge-to-edge content
+**Mobile-First Grid**:
+- Mobile: 4px edge padding, full-width components
+- Tablet: 8-column grid, 16px gutters
+- Desktop: 12-column grid, max-w-6xl container
 
-**Responsive Breakpoints**:
-- Mobile: < 768px (single column, stack all)
-- Tablet: 768px - 1024px (2-column where appropriate)
-- Desktop: > 1024px (full multi-column layouts)
+**One-Handed Thumb Zone**:
+- Critical actions: Bottom 40% of screen
+- Secondary actions: Center 30% of screen
+- Reference data: Top 30% of screen (read-only)
 
 ---
 
 ## Component Library
 
 ### Navigation
-**Desktop Top Bar**:
-- Organization/Team selector dropdown (left)
-- Primary navigation tabs: Programs, Athletes, Analytics, Messages
-- User profile menu with role badge (right)
-- Height: 64px, persistent across all pages
 
-**Mobile Bottom Navigation**:
-- 5 tabs: Workout, Programs, Team, Messages, Profile
-- Active workout session indicator (pulsing dot)
-- Height: 56px, fixed position
+**Mobile Bottom Bar** (Primary):
+- 4 tabs: Workout (icon: dumbbell), Timer (icon: clock), Plates (icon: calculator), Profile
+- Height: 64px for easy thumb access
+- Active indicator: Blue underline + icon fill
+- Active workout: Pulsing blue dot on Workout tab
 
-**Sidebar (Desktop Only)**:
-- Width: 280px, collapsible to 64px
-- Hierarchical navigation: Organization > Teams > Athletes
-- Search/filter input at top
-- Contextual actions based on selection
-
-### Cards & Containers
-**Program Card**:
-- Compact view: Title, duration, athlete count, thumbnail
-- Padding: p-4, rounded-lg, shadow-sm
-- Hover: lift effect (shadow-md)
-
-**Workout Day Card**:
-- Exercise list with set/rep scheme preview
-- Completion status indicator
-- Padding: p-6, clear visual separation between exercises
-
-**Athlete Card**:
-- Avatar, name, current program, last activity
-- Quick stats: compliance rate, recent PRs
-- Grid layout: 3-column desktop, 2-column tablet, 1-column mobile
+**Quick Action Bar** (During Workout):
+- Floating overlay, 72px height
+- Position: Above bottom nav, sticky
+- Contains: Previous/Next exercise, Rest timer, Notes
+- Background: Surface bright with blur
 
 ### Forms & Inputs
-**Exercise Set Logger** (Critical Mobile Component):
-- Large touch targets: minimum 48px height
-- Weight input: Numeric keypad, unit toggle (lbs/kg)
-- Reps input: Quick increment buttons (+/-) with manual entry
-- RPE selector: Horizontal slider or button grid (1-10)
-- Submit button: Full-width, primary action, sticky at bottom
-- Previous set reference: Compact card above current input
 
-**Program Builder Form**:
-- Drag-and-drop exercise reordering
-- Inline editing for sets/reps/intensity
-- Autosave indicator
-- Nested structure: Week > Day > Exercise
-- Padding: p-8 for comfortable desktop use
+**Weight Input** (Mobile Focus):
+- Height: 72px, full-width
+- Numeric keypad auto-opens
+- Unit toggle (lbs/kg): 48px × 80px pill button, top-right
+- Previous set reference: Subtle text below, 14px
+- Large numbers: 32px Roboto Mono, white
 
-**Standard Inputs**:
-- Height: 48px (mobile), 40px (desktop)
-- Clear focus states with outline, no border color changes
-- Label always visible above input
-- Helper text below in caption size
-- Error states with icon and message
+**Reps Counter**:
+- Center: Large display (48px number)
+- Sides: Increment/decrement buttons, 64px × 64px
+- Quick-add buttons: 5, 8, 10, 12 (48px height, pill shape)
+- Touch ripple feedback on all interactions
+
+**RPE Selector**:
+- Horizontal slider: 48px height track
+- Markers: 1-10, every 0.5 increment
+- Current value: 40px badge above thumb
+- Color gradient: Green (6) → Yellow (8) → Red (10)
+
+**Set Logger Card**:
+- Stacked vertical layout: Weight → Reps → RPE → Submit
+- Card padding: p-6, rounded-2xl
+- Submit button: 56px height, full-width, blue, "Log Set"
+- Spacing between inputs: gap-4
+
+### Workout Flow
+
+**Exercise Header**:
+- Height: 96px, sticky top
+- Exercise name: 20px medium
+- Set counter: "Set 3 of 5" - 16px, medium emphasis
+- Collapse button: 48px × 48px, top-right
+- Background: Surface variant, shadow-md
+
+**Rest Timer Modal**:
+- Full-screen overlay, centered content
+- Countdown: 72px Roboto Mono, white
+- Progress ring: 240px diameter, blue stroke
+- Actions: +30s, -30s, Skip (56px height buttons)
+- Background: Surface with 80% opacity
+
+**Plate Calculator**:
+- Target weight input: 72px height
+- Plate breakdown: Visual representation
+- Grid: 2 columns showing plates per side
+- Plate badges: 48px height, rounded, color-coded
+- Standard plates: 45lb (blue), 25lb (green), 10lb (white), 5lb (red)
 
 ### Data Display
-**Progress Charts**:
-- Line charts: 1RM progression over time
-- Bar charts: Volume comparison across weeks
-- Minimal chrome, data-focused
-- Legend placement: bottom for mobile, right for desktop
-- Tooltips on hover/tap with detailed metrics
 
-**Exercise History Table** (Mobile Compact):
-- Previous 5 sets shown during workout
-- Columns: Date, Weight, Reps, RPE
-- Condensed spacing: py-2 per row
-- Sticky header on scroll
+**Set History Table**:
+- Last 5 sets visible during workout
+- Row height: 56px
+- Columns: Date (compact), Weight, Reps, RPE, Notes icon
+- Sticky header: 48px, Surface bright
+- Alternating row backgrounds for scanning
 
-**Analytics Dashboard**:
-- Widget grid: 2-column mobile, 4-column desktop
-- Key metrics: Total volume, Estimated 1RM, Workout compliance, PRs this month
-- Each widget: Title, large number, trend indicator, mini-chart
+**Progress Cards** (Dashboard):
+- 2-column grid on mobile
+- Card height: 120px minimum
+- Large metric: 32px Roboto Mono, white
+- Trend indicator: Arrow icon + percentage
+- Mini sparkline: 16px height, blue
 
-### Messaging
-**Chat Interface**:
-- Message bubbles: max-w-prose, p-3
-- Coach messages: align-left
-- Athlete messages: align-right
-- Timestamp: caption size, subtle
-- Input bar: sticky bottom, 56px height, attachment button
+**Workout Summary**:
+- Expandable accordion: 64px collapsed height
+- Total volume, duration, exercises completed
+- Per-exercise breakdown on expand
+- Share button: 48px × 48px, top-right
 
-**Workout Comments**:
-- Inline with exercise logs
-- Threaded view for context
-- Compact padding: p-3
+### Quick Access Tools
 
-### Actions & Buttons
-**Primary Actions**:
-- Height: 48px (mobile), 40px (desktop)
-- Full-width on mobile for critical actions
-- Rounded: rounded-lg
-- Examples: "Start Workout", "Save Program", "Assign to Athletes"
+**Timer Widget** (Floating):
+- Compact: 48px × 120px pill, bottom-right
+- Expanded: 280px × 400px modal
+- Preset buttons: 1:00, 2:00, 3:00, 5:00 (48px height)
+- Custom input: 64px height
+- Close: Swipe down gesture
 
-**Secondary Actions**:
-- Outlined or text style
-- Same height as primary
-- Used for "Cancel", "View Details", "Edit"
+**Notes/Comments**:
+- Inline with exercise
+- Expandable text area: 120px default, 240px expanded
+- Voice input button: 48px × 48px
+- Auto-save indicator: Subtle pulse
 
-**FAB (Floating Action Button)** - Mobile:
-- Position: bottom-right, 16px margin
-- Size: 56px diameter
-- Primary use: "Add Exercise" during workout logging
-- Shadow: shadow-lg for elevation
+### Cards & Containers
+
+**Program Card** (Tablet/Desktop):
+- Horizontal layout: Thumbnail left, content right
+- Height: 140px
+- Padding: p-6
+- Hover: Transform scale(1.02), shadow-lg
+
+**Athlete Card** (Coach View):
+- 3-column desktop, 2-column tablet, 1-column mobile
+- Avatar: 56px diameter
+- Compliance badge: Top-right corner, 24px
+- Last workout: Caption text, timestamp format
 
 ---
 
 ## Accessibility
 
-- Minimum touch target: 48px × 48px for all interactive elements
-- Form inputs: Clear label association, ARIA attributes
-- Focus indicators: 2px outline on all interactive elements
-- Keyboard navigation: Tab order follows visual hierarchy
-- Screen reader: Descriptive labels for data tables and charts
+- Minimum touch: 48px × 48px (standard), 64px × 64px (critical workout actions)
+- Focus indicators: 3px blue outline, 4px offset
+- High contrast: All text meets WCAG AAA on dark backgrounds
+- Haptic feedback: On successful set log, timer complete
+- Screen reader: Descriptive labels for all numeric inputs
+- Reduce motion: Optional for timer animations
 
 ---
 
 ## Images
 
-**Not Required**: This is a data-centric productivity tool. All UI focuses on forms, tables, charts, and workout logging interfaces. No hero images or decorative photography needed. Exercise library uses video thumbnails (small, 16:9 ratio, embedded in cards).
+**No Hero Images**: This is a utility-focused workout app. All visuals are data-driven (charts, progress indicators, exercise thumbnails).
+
+**Exercise Thumbnails**: 
+- 16:9 ratio, 120px × 68px
+- Embedded in exercise cards
+- Low-res acceptable for bandwidth
 
 ---
 
 ## Page-Specific Layouts
 
-**Dashboard** (Desktop):
-- 3-column layout: Quick stats, Recent activity feed, Upcoming workouts
-- Full-width analytics section below
-- Spacing: p-16 container, gap-8 between sections
-
-**Program Builder** (Desktop):
-- Left sidebar: Exercise library with search
-- Center: Program structure (week/day/exercise tree)
-- Right panel: Exercise details and customization
-- Spacing: Full-screen layout, minimal padding
-
 **Workout Logging** (Mobile):
-- Full-screen, no distractions
-- One exercise visible at a time
-- Swipe to next/previous exercise
-- Progress indicator: top bar showing exercise X of Y
-- Spacing: p-4, generous tap targets
+- Full-screen, edge-to-edge
+- Single exercise focus, swipe horizontal to navigate
+- Progress bar: 4px height, top edge
+- Spacing: p-4 container, gap-4 between elements
 
-**Team Management** (Desktop):
-- Data table: sortable columns, filter row
-- Bulk actions: checkboxes for multi-select
-- Row height: 56px for comfortable scanning
+**Dashboard** (Mobile):
+- Vertical scroll
+- Today's workout: Full-width card, p-6
+- Quick stats: 2-column grid, gap-4
+- Recent PRs: Horizontal scroll cards
+- Spacing: p-4 outer, gap-6 sections
+
+**Program Builder** (Tablet/Desktop):
+- Left: Exercise library, 280px width
+- Center: Program tree structure, flex-grow
+- Right: Details panel, 320px width
+- Full-height layout, minimal padding
+
+**Timer Page**:
+- Centered content, max-w-sm
+- Large countdown display
+- Preset grid: 2 columns, gap-4
+- History: Bottom sheet, swipe up
