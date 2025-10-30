@@ -940,6 +940,372 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // DELETE ROUTES
+  // ============================================
+
+  // Delete organization (owner only)
+  app.delete('/api/organizations/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const org = await storage.getOrganization(req.params.id);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Only owner can delete
+      if (org.ownerId !== req.currentUser.id) {
+        return res.status(403).json({ message: "Forbidden: only organization owner can delete" });
+      }
+
+      await storage.deleteOrganization(req.params.id);
+      res.json({ success: true, message: "Organization deleted" });
+    } catch (error) {
+      console.error("Error deleting organization:", error);
+      res.status(500).json({ message: "Failed to delete organization" });
+    }
+  });
+
+  // Delete team (org owner or head coach)
+  app.delete('/api/teams/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const team = await storage.getTeam(req.params.id);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const org = await storage.getOrganization(team.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check permissions
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isHeadCoach = req.currentUser.role === 'head_coach' && 
+                          await hasOrganizationAccess(req.currentUser.id, team.organizationId);
+
+      if (!isOwner && !isHeadCoach) {
+        return res.status(403).json({ message: "Forbidden: only organization owner or head coach can delete teams" });
+      }
+
+      await storage.deleteTeam(req.params.id);
+      res.json({ success: true, message: "Team deleted" });
+    } catch (error) {
+      console.error("Error deleting team:", error);
+      res.status(500).json({ message: "Failed to delete team" });
+    }
+  });
+
+  // Remove team member
+  app.delete('/api/teams/:teamId/members/:userId', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const team = await storage.getTeam(req.params.teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const org = await storage.getOrganization(team.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check permissions (owner, head coach, or removing self)
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isHeadCoach = req.currentUser.role === 'head_coach' && 
+                          await hasOrganizationAccess(req.currentUser.id, team.organizationId);
+      const isRemovingSelf = req.params.userId === req.currentUser.id;
+
+      if (!isOwner && !isHeadCoach && !isRemovingSelf) {
+        return res.status(403).json({ message: "Forbidden: insufficient permissions" });
+      }
+
+      await storage.removeTeamMember(req.params.teamId, req.params.userId);
+      res.json({ success: true, message: "Team member removed" });
+    } catch (error) {
+      console.error("Error removing team member:", error);
+      res.status(500).json({ message: "Failed to remove team member" });
+    }
+  });
+
+  // Delete program
+  app.delete('/api/programs/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const program = await storage.getProgram(req.params.id);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      // Check permissions (owner or creator)
+      const org = await storage.getOrganization(program.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = program.createdBy === req.currentUser.id;
+
+      if (!isOwner && !isCreator) {
+        return res.status(403).json({ message: "Forbidden: only program creator or org owner can delete" });
+      }
+
+      await storage.deleteProgram(req.params.id);
+      res.json({ success: true, message: "Program deleted" });
+    } catch (error) {
+      console.error("Error deleting program:", error);
+      res.status(500).json({ message: "Failed to delete program" });
+    }
+  });
+
+  // Delete exercise (custom only)
+  app.delete('/api/exercises/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const exercise = await storage.getExercise(req.params.id);
+      if (!exercise) {
+        return res.status(404).json({ message: "Exercise not found" });
+      }
+
+      // Cannot delete global exercises
+      if (!exercise.organizationId) {
+        return res.status(403).json({ message: "Forbidden: cannot delete global exercises" });
+      }
+
+      // Check permissions
+      const org = await storage.getOrganization(exercise.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = exercise.createdBy === req.currentUser.id;
+
+      if (!isOwner && !isCreator) {
+        return res.status(403).json({ message: "Forbidden: only exercise creator or org owner can delete" });
+      }
+
+      await storage.deleteExercise(req.params.id);
+      res.json({ success: true, message: "Exercise deleted" });
+    } catch (error) {
+      console.error("Error deleting exercise:", error);
+      res.status(500).json({ message: "Failed to delete exercise" });
+    }
+  });
+
+  // Delete workout session
+  app.delete('/api/workout-sessions/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const session = await storage.getWorkoutSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ message: "Workout session not found" });
+      }
+
+      // Only athlete can delete their own session
+      if (session.athleteId !== req.currentUser.id) {
+        return res.status(403).json({ message: "Forbidden: can only delete your own workout sessions" });
+      }
+
+      await storage.deleteWorkoutSession(req.params.id);
+      res.json({ success: true, message: "Workout session deleted" });
+    } catch (error) {
+      console.error("Error deleting workout session:", error);
+      res.status(500).json({ message: "Failed to delete workout session" });
+    }
+  });
+
+  // ============================================
+  // UPDATE ROUTES
+  // ============================================
+
+  // Update exercise
+  app.patch('/api/exercises/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const exercise = await storage.getExercise(req.params.id);
+      if (!exercise) {
+        return res.status(404).json({ message: "Exercise not found" });
+      }
+
+      // Cannot update global exercises
+      if (!exercise.organizationId) {
+        return res.status(403).json({ message: "Forbidden: cannot update global exercises" });
+      }
+
+      // Check permissions
+      const org = await storage.getOrganization(exercise.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = exercise.createdBy === req.currentUser.id;
+      const isCoach = req.currentUser.role === 'admin' || 
+                     req.currentUser.role === 'head_coach' || 
+                     req.currentUser.role === 'assistant_coach';
+
+      // Must be owner, creator, or coach in the org
+      if (!isOwner && !isCreator && !isCoach) {
+        return res.status(403).json({ message: "Forbidden: insufficient permissions" });
+      }
+
+      if (isCoach && !isOwner && !isCreator) {
+        const hasAccess = await hasOrganizationAccess(req.currentUser.id, exercise.organizationId);
+        if (!hasAccess) {
+          return res.status(403).json({ message: "Forbidden: not a member of this organization" });
+        }
+      }
+
+      // Validate update data
+      const updateData: any = {};
+      if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.description !== undefined) updateData.description = req.body.description;
+      if (req.body.category !== undefined) updateData.category = req.body.category;
+      if (req.body.muscleGroup !== undefined) updateData.muscleGroup = req.body.muscleGroup;
+      if (req.body.equipment !== undefined) updateData.equipment = req.body.equipment;
+      if (req.body.videoUrl !== undefined) updateData.videoUrl = req.body.videoUrl;
+      if (req.body.instructions !== undefined) updateData.instructions = req.body.instructions;
+
+      const updated = await storage.updateExercise(req.params.id, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: "Exercise not found" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating exercise:", error);
+      res.status(400).json({ message: "Failed to update exercise" });
+    }
+  });
+
+  // Update program
+  app.patch('/api/programs/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const program = await storage.getProgram(req.params.id);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      // Check permissions
+      const org = await storage.getOrganization(program.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = program.createdBy === req.currentUser.id;
+
+      if (!isOwner && !isCreator) {
+        return res.status(403).json({ message: "Forbidden: only program creator or org owner can update" });
+      }
+
+      const updateData: any = {};
+      if (req.body.name !== undefined) updateData.name = req.body.name;
+      if (req.body.description !== undefined) updateData.description = req.body.description;
+      if (req.body.durationWeeks !== undefined) updateData.durationWeeks = req.body.durationWeeks;
+      if (req.body.phase !== undefined) updateData.phase = req.body.phase;
+      if (req.body.isTemplate !== undefined) updateData.isTemplate = req.body.isTemplate;
+
+      const updated = await storage.updateProgram(req.params.id, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating program:", error);
+      res.status(400).json({ message: "Failed to update program" });
+    }
+  });
+
+  // Update program exercise
+  app.patch('/api/program-exercises/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const programExercise = await storage.getProgramExercise(req.params.id);
+      if (!programExercise) {
+        return res.status(404).json({ message: "Program exercise not found" });
+      }
+
+      // Get day -> week -> program to check permissions
+      const day = await storage.getProgramDay(programExercise.dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+
+      const week = await storage.getProgramWeek(day.weekId);
+      if (!week) {
+        return res.status(404).json({ message: "Week not found" });
+      }
+
+      const program = await storage.getProgram(week.programId);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      // Check permissions
+      const org = await storage.getOrganization(program.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = program.createdBy === req.currentUser.id;
+
+      if (!isOwner && !isCreator) {
+        return res.status(403).json({ message: "Forbidden: only program creator or org owner can update" });
+      }
+
+      const updateData: any = {};
+      if (req.body.sets !== undefined) updateData.sets = req.body.sets;
+      if (req.body.reps !== undefined) updateData.reps = req.body.reps;
+      if (req.body.intensity !== undefined) updateData.intensity = req.body.intensity;
+      if (req.body.restSeconds !== undefined) updateData.restSeconds = req.body.restSeconds;
+      if (req.body.notes !== undefined) updateData.notes = req.body.notes;
+      if (req.body.order !== undefined) updateData.order = req.body.order;
+
+      const updated = await storage.updateProgramExercise(req.params.id, updateData);
+      if (!updated) {
+        return res.status(404).json({ message: "Program exercise not found" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating program exercise:", error);
+      res.status(400).json({ message: "Failed to update program exercise" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

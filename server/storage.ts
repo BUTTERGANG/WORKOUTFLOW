@@ -659,22 +659,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(programExercises.id, id));
     return exercise;
   }
-
-  async getProgramWeek(id: string): Promise<ProgramWeek | undefined> {
-    const [week] = await db
-      .select()
-      .from(programWeeks)
-      .where(eq(programWeeks.id, id));
-    return week;
-  }
-
-  async getProgramDay(id: string): Promise<ProgramDay | undefined> {
-    const [day] = await db
-      .select()
-      .from(programDays)
-      .where(eq(programDays.id, id));
-    return day;
-  }
 }
 
 export const storage = new DatabaseStorage();
