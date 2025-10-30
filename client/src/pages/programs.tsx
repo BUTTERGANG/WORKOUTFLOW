@@ -151,53 +151,59 @@ export default function Programs() {
 
   return (
     <div className="h-full overflow-auto">
-      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-        {/* Header */}
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mx-auto max-w-7xl p-4">
+        {/* Header - Mobile-First */}
+        <div className="mb-6 flex flex-col gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Programs</h1>
-            <p className="mt-2 text-muted-foreground">
+            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Programs</h1>
+            <p className="mt-1 text-sm text-muted-foreground sm:mt-2 sm:text-base">
               Create and manage training programs for your athletes
             </p>
           </div>
 
           <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
             <DialogTrigger asChild>
-              <Button data-testid="button-create-program" className="gap-2">
-                <Plus className="h-4 w-4" />
+              <Button 
+                data-testid="button-create-program" 
+                className="h-12 w-full gap-2 text-base sm:h-10 sm:w-auto sm:text-sm"
+                size="default"
+              >
+                <Plus className="h-5 w-5 sm:h-4 sm:w-4" />
                 Create Program
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle>Create New Program</DialogTitle>
-                <DialogDescription>
+                <DialogTitle className="text-xl">Create New Program</DialogTitle>
+                <DialogDescription className="text-base">
                   Build a structured training program for your athletes
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="programName">Program Name</Label>
+              <div className="grid gap-6 py-4">
+                <div className="grid gap-3">
+                  <Label htmlFor="programName" className="text-base">Program Name</Label>
                   <Input
                     id="programName"
                     placeholder="e.g., Strength & Conditioning - Week 1-12"
                     value={programName}
                     onChange={(e) => setProgramName(e.target.value)}
                     data-testid="input-program-name"
+                    className="h-12 text-base"
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description (Optional)</Label>
+                <div className="grid gap-3">
+                  <Label htmlFor="description" className="text-base">Description (Optional)</Label>
                   <Textarea
                     id="description"
                     placeholder="Program goals and overview..."
                     value={programDescription}
                     onChange={(e) => setProgramDescription(e.target.value)}
                     data-testid="input-program-description"
+                    className="min-h-[120px] text-base"
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="duration">Duration (Weeks)</Label>
+                <div className="grid gap-3">
+                  <Label htmlFor="duration" className="text-base">Duration (Weeks)</Label>
                   <Input
                     id="duration"
                     type="number"
@@ -207,14 +213,16 @@ export default function Programs() {
                     value={programDuration}
                     onChange={(e) => setProgramDuration(e.target.value)}
                     data-testid="input-program-duration"
+                    className="h-12 text-base"
                   />
                 </div>
               </div>
-              <DialogFooter>
+              <DialogFooter className="flex-col gap-2 sm:flex-row">
                 <Button
                   onClick={handleCreateProgram}
                   disabled={!programName.trim() || !programDuration}
                   data-testid="button-submit-program"
+                  className="h-12 w-full text-base sm:h-10 sm:w-auto sm:text-sm"
                 >
                   Create & Build Program
                 </Button>
@@ -245,38 +253,38 @@ export default function Programs() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {programs.map((program) => (
               <Card
                 key={program.id}
-                className="hover-elevate cursor-pointer transition-shadow"
+                className="hover-elevate active-elevate-2 cursor-pointer"
                 onClick={() => {
                   setSelectedProgram(program);
                   setBuildDialogOpen(true);
                 }}
                 data-testid={`card-program-${program.id}`}
               >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-lg">{program.name}</CardTitle>
+                <CardHeader className="pb-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-lg sm:text-base truncate">{program.name}</CardTitle>
                       {program.description && (
-                        <CardDescription className="mt-2 line-clamp-2">
+                        <CardDescription className="mt-2 line-clamp-2 text-sm">
                           {program.description}
                         </CardDescription>
                       )}
                     </div>
-                    <ChevronRight className="h-5 w-5 flex-shrink-0 text-muted-foreground" />
+                    <ChevronRight className="h-6 w-6 flex-shrink-0 text-muted-foreground sm:h-5 sm:w-5" />
                   </div>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary" className="gap-1">
-                      <Calendar className="h-3 w-3" />
+                    <Badge variant="secondary" className="gap-1 h-7 px-3 text-sm">
+                      <Calendar className="h-4 w-4" />
                       {program.durationWeeks} weeks
                     </Badge>
                     {program.phase && (
-                      <Badge variant="outline">{program.phase}</Badge>
+                      <Badge variant="outline" className="h-7 px-3 text-sm">{program.phase}</Badge>
                     )}
                   </div>
                 </CardContent>
