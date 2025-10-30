@@ -252,6 +252,38 @@ export const messages = pgTable("messages", {
 ]);
 
 // ============================================
+// HABIT TRACKING
+// ============================================
+
+export const habitTypes = pgEnum('habit_type', ['water', 'weight', 'measurement', 'custom']);
+
+export const habitTrackers = pgTable("habit_trackers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: habitTypes("type").notNull(),
+  name: varchar("name", { length: 100 }).notNull(), // e.g., "Water Intake", "Body Weight", "Waist"
+  unit: varchar("unit", { length: 50 }), // e.g., "oz", "lbs", "inches"
+  targetValue: real("target_value"), // optional daily target
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_habit_trackers_user_id").on(table.userId),
+  index("idx_habit_trackers_type").on(table.type),
+]);
+
+export const habitEntries = pgTable("habit_entries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  trackerId: uuid("tracker_id").notNull().references(() => habitTrackers.id, { onDelete: 'cascade' }),
+  value: real("value").notNull(), // the measurement value
+  date: timestamp("date").notNull(), // when the measurement was taken
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_habit_entries_tracker_id").on(table.trackerId),
+  index("idx_habit_entries_date").on(table.date),
+  unique("unique_tracker_date").on(table.trackerId, table.date),
+]);
+
+// ============================================
 // RELATIONS
 // ============================================
 

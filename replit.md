@@ -52,6 +52,26 @@ This platform provides coaches with powerful tools to create training programs, 
 
 ## Recent Changes
 
+- **2025-10-30**: Critical Auth & UX Fixes + Dark Mode + Habit Tracker ✅
+  - 🔒 **Critical Auth Fixes**:
+    - Fixed useAuth hook to handle 401 errors gracefully (returns null instead of crashing)
+    - Added loading spinner to prevent flash between Landing → Dashboard
+    - Implemented logout dropdown menu in sidebar with proper navigation
+    - Removed duplicate user state from AppContext (eliminated sync issues)
+  - 🎨 **Dark Mode Enabled**:
+    - Dark theme now default across entire app
+    - Blue/purple accent colors matching Material Design 3 spec
+    - Configured for mobile-first workout experience
+  - 📊 **Habit Tracker System**:
+    - Added habitTrackers and habitEntries tables
+    - Support for water intake, weight, body measurements
+    - Daily tracking with unique date constraints
+    - Ready for frontend implementation
+  - 🔧 **Program Builder Improvements**:
+    - Added unique constraint on (weekId, dayNumber) to prevent duplicate days
+    - Fixed query parameter bug in program listing
+    - Mobile-optimized UI with proper touch targets
+  
 - **2025-10-30**: Database Migration to NeonDB ✅
   - 🗄️ **Database**: Migrated from local PostgreSQL to NeonDB (serverless)
   - ✅ Schema successfully pushed to NeonDB

@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppProvider } from "@/contexts/AppContext";
+import { ThemeProvider } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/useAuth";
 
 // Pages
@@ -80,16 +81,18 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <AppProvider>
-          <SidebarProvider style={style as React.CSSProperties}>
-            <div className="flex h-screen w-full">
-              <Router />
-            </div>
-          </SidebarProvider>
-          <Toaster />
-        </AppProvider>
-      </TooltipProvider>
+      <ThemeProvider defaultTheme="dark">
+        <TooltipProvider>
+          <AppProvider>
+            <SidebarProvider style={style as React.CSSProperties}>
+              <div className="flex h-screen w-full">
+                <Router />
+              </div>
+            </SidebarProvider>
+            <Toaster />
+          </AppProvider>
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
