@@ -8,6 +8,8 @@ import {
   MessageSquare,
   Settings,
   ChevronRight,
+  LogOut,
+  User as UserIcon,
 } from "lucide-react";
 import {
   Sidebar,
@@ -21,6 +23,14 @@ import {
   SidebarHeader,
   SidebarFooter,
 } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
@@ -136,27 +146,51 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t border-sidebar-border p-4">
         {user && (
-          <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10">
-              <AvatarImage src={user.profileImageUrl || undefined} style={{ objectFit: 'cover' }} />
-              <AvatarFallback>
-                {user.firstName?.[0] || user.email?.[0] || 'U'}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-1 flex-col overflow-hidden">
-              <span className="truncate text-sm font-medium">
-                {user.firstName && user.lastName 
-                  ? `${user.firstName} ${user.lastName}`
-                  : user.email || 'User'}
-              </span>
-              {user.role && (
-                <Badge variant={getRoleBadgeVariant(user.role)} className="mt-1 w-fit text-xs">
-                  {getRoleLabel(user.role)}
-                </Badge>
-              )}
-            </div>
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button 
+                className="flex w-full items-center gap-3 rounded-lg p-2 hover-elevate active-elevate-2"
+                data-testid="button-user-menu"
+              >
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={user.profileImageUrl || undefined} style={{ objectFit: 'cover' }} />
+                  <AvatarFallback>
+                    {user.firstName?.[0] || user.email?.[0] || 'U'}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex flex-1 flex-col overflow-hidden text-left">
+                  <span className="truncate text-sm font-medium">
+                    {user.firstName && user.lastName 
+                      ? `${user.firstName} ${user.lastName}`
+                      : user.email || 'User'}
+                  </span>
+                  {user.role && (
+                    <Badge variant={getRoleBadgeVariant(user.role)} className="mt-1 w-fit text-xs">
+                      {getRoleLabel(user.role)}
+                    </Badge>
+                  )}
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <a href="/settings" data-testid="link-settings">
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  Settings
+                </a>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <a href="/api/logout" className="text-destructive" data-testid="link-logout">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Log out
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </SidebarFooter>
     </Sidebar>

@@ -1,0 +1,203 @@
+🔴 Critical Errors Found - Fix These First!
+Issue #1: Duplicate User State (MOST IMPORTANT)
+Problem: You have TWO conflicting sources of user data:
+
+useAuth() fetches from server
+AppContext.currentUser stores in localStorage
+
+Result: They get out of sync! User data in localStorage becomes stale.
+Fix:
+typescript// REMOVE currentUser from AppContext completely
+// Only keep org and team state
+
+interface AppContextType {
+  currentOrganization: Organization | null;
+  setCurrentOrganization: (org: Organization | null) => void;
+  currentTeam: Team | null;
+  setCurrentTeam: (team: Team | null) => void;
+  // ❌ REMOVE: currentUser, setCurrentUser
+}
+
+Issue #2: Auth Hook Broken
+Problem: Your useAuth hook will crash on 401 errors instead of returning null.
+Fix:
+typescript// client/src/hooks/useAuth.ts
+import { useQuery } from "@tanstack/react-query";
+import { getQueryFn } from "@/lib/queryClient";
+import type { User } from "@shared/schema";
+
+export function useAuth() {
+  const { data: user, isLoading, error } = useQuery<User | null>({
+    queryKey: ["/api/auth/user"],
+    retry: 1, // Retry once if network fails
+    queryFn: getQueryFn({ on401: "returnNull" }), // Return null instead of throwing
+  });
+
+  return {
+    user: user ?? null,
+    isLoading,
+    isAuthenticated: !!user,
+    error,
+  };
+}
+
+Issue #3: Loading State Flash
+Problem: Users see Landing page → flash → Dashboard (bad UX)
+Fix:
+typescript// client/src/App.tsx - Replace Router function
+
+function Router() {
+  const { isAuthenticated, isLoading } = useAuth();
+
+  // Show loading spinner while checking auth
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="mt-4 text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show landing page if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <Switch>
+        <Route path="/" component={Landing} />
+        <Route component={Landing} />
+      </Switch>
+    );
+  }
+
+  // Show authenticated app
+  return (
+    <>
+      <AppSidebar />
+      <div className="flex w-full flex-col">
+        <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border bg-background px-4">
+          <SidebarTrigger />
+        </header>
+        <main className="flex-1 overflow-hidden">
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/onboarding" component={Onboarding} />
+            <Route path="/programs" component={Programs} />
+            <Route path="/workout" component={Workout} />
+            <Route path="/athletes" component={Athletes} />
+            <Route path="/progress" component={Progress} />
+            <Route path="/messages" component={Messages} />
+            <Route path="/settings" component={Settings} />
+            <Route component={NotFound} />
+          </Switch>
+        </main>
+      </div>
+    </>
+  );
+}
+
+Issue #4: No Logout Button
+Problem: Users can't log out!
+Fix:
+typescript// client/src/components/app-sidebar.tsx - Update footer
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { LogOut, User as UserIcon } from "lucide-react";
+
+// In SidebarFooter, replace the div with:
+<SidebarFooter className="border-t border-sidebar-border p-4">
+  {user && (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex w-full items-center gap-3 rounded-lg p-2 hover:bg-sidebar-accent">
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={user.profileImageUrl || undefined} />
+            <AvatarFallback>
+              {user.firstName?.[0] || user.email?.[0] || 'U'}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex flex-1 flex-col overflow-hidden text-left">
+            <span className="truncate text-sm font-medium">
+              {user.firstName && user.lastName 
+                ? `${user.firstName} ${user.lastName}`
+                : user.email || 'User'}
+            </span>
+            {user.role && (
+              <Badge variant={getRoleBadgeVariant(user.role)} className="mt-1 w-fit text-xs">
+                {getRoleLabel(user.role)}
+              </Badge>
+            )}
+          </div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href="/settings">
+            <UserIcon className="mr-2 h-4 w-4" />
+            Settings
+          </a>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <a href="/api/logout" className="text-destructive">
+            <LogOut className="mr-2 h-4 w-4" />
+            Log out
+          </a>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )}
+</SidebarFooter>
+
+Issue #5: Missing Mobile Navigation
+Problem: Design doc requires mobile bottom nav, but you only have desktop sidebar.
+Quick Fix:
+typescript// client/src/App.tsx - Add mobile detection
+
+import { useIsMobile } from "@/hooks/use-mobile";
+
+function Router() {
+  const { isAuthenticated, isLoading } = useAuth();
+  const isMobile = useIsMobile();
+
+  // ... loading/auth checks ...
+
+  // Show authenticated app WITH mobile support
+  return (
+    <>
+      {!isMobile && <AppSidebar />}
+      <div className="flex w-full flex-col">
+        {!isMobile && (
+          <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border bg-background px-4">
+            <SidebarTrigger />
+          </header>
+        )}
+        <main className="flex-1 overflow-hidden">
+          <Switch>
+            {/* routes */}
+          </Switch>
+        </main>
+        {isMobile && <MobileBottomNav />} {/* Add this */}
+      </div>
+    </>
+  );
+}
+
+📋 Priority Fix Order:
+
+Fix useAuth hook (5 minutes) - Prevents crashes
+Fix loading state (5 minutes) - Better UX
+Add logout button (10 minutes) - Critical functionality
+Remove duplicate user state (15 minutes) - Prevents data sync issues
+Add mobile nav (30 minutes) - Design requirement
