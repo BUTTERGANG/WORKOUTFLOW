@@ -51,6 +51,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   updateUserRole(userId: string, role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete'): Promise<void>;
+  updateUserProfile(userId: string, data: { firstName: string; lastName: string; email: string; role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete' }): Promise<void>;
   getUserTeams(userId: string): Promise<Team[]>;
   
   // Organization operations
@@ -160,6 +161,19 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(users)
       .set({ role, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  async updateUserProfile(userId: string, data: { firstName: string; lastName: string; email: string; role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete' }): Promise<void> {
+    await db
+      .update(users)
+      .set({
+        firstName: data.firstName,
+        lastName: data.lastName,
+        email: data.email,
+        role: data.role,
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId));
   }
 

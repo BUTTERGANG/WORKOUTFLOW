@@ -51,6 +51,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post('/api/auth/register', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.user!.claims.sub;
+      const { firstName, lastName, email, userType } = req.body;
+      
+      if (!firstName || !lastName || !email) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Determine role based on userType
+      const role = userType === 'coach' ? 'head_coach' : 'athlete';
+      
+      // Update user profile
+      await storage.updateUserProfile(userId, {
+        firstName,
+        lastName,
+        email,
+        role,
+      });
+      
+      const updatedUser = await storage.getUser(userId);
+      res.json(updatedUser);
+    } catch (error: any) {
+      console.error("Error completing registration:", error);
+      res.status(400).json({ message: error?.message || "Failed to complete registration" });
+    }
+  });
+
   // ============================================
   // ORGANIZATION ROUTES
   // ============================================

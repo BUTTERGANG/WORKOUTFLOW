@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/useAuth";
 
 // Pages
 import Landing from "@/pages/landing";
+import Register from "@/pages/register";
 import Onboarding from "@/pages/onboarding";
 import Dashboard from "@/pages/dashboard";
 import Programs from "@/pages/programs";
@@ -22,7 +23,7 @@ import Settings from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   // Show loading spinner while checking auth
   if (isLoading) {
@@ -42,6 +43,17 @@ function Router() {
       <Switch>
         <Route path="/" component={Landing} />
         <Route component={Landing} />
+      </Switch>
+    );
+  }
+
+  // Show registration if authenticated but profile incomplete
+  if (!user?.firstName || !user?.lastName) {
+    return (
+      <Switch>
+        <Route path="/" component={Register} />
+        <Route path="/register" component={Register} />
+        <Route component={Register} />
       </Switch>
     );
   }

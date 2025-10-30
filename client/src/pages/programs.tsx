@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {  Plus, FileText, Calendar, Users, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, FileText, Calendar, Users, ChevronRight, Trash2, Pencil } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -335,31 +335,18 @@ function ProgramBuilderDialog({
   exercises: Exercise[];
 }) {
   const { toast } = useToast();
-  const [weeks, setWeeks] = useState<(ProgramWeek & { days: ProgramDay[] })[]>([]);
-  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
-  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
+  const [editingDayId, setEditingDayId] = useState<string | null>(null);
+  const [editDayName, setEditDayName] = useState("");
 
   // Fetch program weeks
-  const { data: programWeeks } = useQuery<(ProgramWeek & { days: (ProgramDay & { exercises: (ProgramExercise & { exercise: Exercise })[] })[] })[]>({
+  const { data: programWeeks, isLoading: weeksLoading } = useQuery<(ProgramWeek & { days: (ProgramDay & { exercises: (ProgramExercise & { exercise: Exercise })[] })[] })[]>({
     queryKey: ['/api/programs', program?.id, 'weeks'],
     enabled: !!program && open,
     queryFn: async () => {
       const res = await fetch(`/api/programs/${program!.id}/weeks`);
       if (!res.ok) throw new Error('Failed to fetch weeks');
       return res.json();
-    },
-  });
-
-  const addWeekMutation = useMutation({
-    mutationFn: async ({ programId, weekNumber }: { programId: string; weekNumber: number }) => {
-      return await apiRequest<ProgramWeek>(`/api/programs/${programId}/weeks`, {
-        method: "POST",
-        body: { weekNumber },
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/programs', program?.id, 'weeks'] });
-      toast({ title: "Week added successfully" });
     },
   });
 
@@ -377,7 +364,7 @@ function ProgramBuilderDialog({
   });
 
   const addExerciseMutation = useMutation({
-    mutationFn: async (data: { dayId: string; exerciseId: string; order: number; sets: number; reps: string; intensity?: string }) => {
+    mutationFn: async (data: { dayId: string; exerciseId: string; order: number; sets: number; reps: string; intensity?: string; notes?: string }) => {
       return await apiRequest<ProgramExercise>(`/api/days/${data.dayId}/exercises`, {
         method: "POST",
         body: data,
@@ -386,136 +373,199 @@ function ProgramBuilderDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/programs', program?.id, 'weeks'] });
       toast({ title: "Exercise added successfully" });
+      setSelectedDayId(null);
     },
   });
 
   if (!program) return null;
 
+  // Flatten all days from all weeks for card-based display
+  const allDays = programWeeks?.flatMap((week) =>
+    week.days.map((day) => ({
+      ...day,
+      weekNumber: week.weekNumber,
+      weekId: week.id,
+    }))
+  ) || [];
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{program.name} - Program Builder</DialogTitle>
-          <DialogDescription>
-            Build out your program with weeks, days, and exercises
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="px-6 pt-6">
+          <DialogTitle className="text-2xl">{program.name}</DialogTitle>
+          <DialogDescription className="text-base">
+            {program.durationWeeks} week program • Add and manage workout days
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Add Week Button */}
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Program Structure</h3>
-            <Button
-              onClick={() => {
-                const nextWeek = (programWeeks?.length || 0) + 1;
-                if (nextWeek <= program.durationWeeks) {
-                  addWeekMutation.mutate({ programId: program.id, weekNumber: nextWeek });
-                }
-              }}
-              disabled={addWeekMutation.isPending || (programWeeks?.length || 0) >= program.durationWeeks}
-              size="sm"
-              data-testid="button-add-week"
-            >
-              <Plus className="h-4 w-4 mr-1" />
-              Add Week {(programWeeks?.length || 0) + 1}
-            </Button>
-          </div>
-
-          {/* Weeks List */}
-          {!programWeeks || programWeeks.length === 0 ? (
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-6 pb-6">
+          {weeksLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                <p className="text-muted-foreground">Loading weeks...</p>
+              </div>
+            </div>
+          ) : !programWeeks || programWeeks.length === 0 ? (
             <Card>
-              <CardContent className="flex flex-col items-center justify-center py-8">
-                <FileText className="mb-4 h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  No weeks added yet. Click "Add Week 1" to start building your program.
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
+                <p className="text-muted-foreground mb-4">
+                  Weeks are being set up for your program...
                 </p>
               </CardContent>
             </Card>
           ) : (
             <div className="space-y-4">
-              {programWeeks.map((week) => (
-                <Card key={week.id}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base">Week {week.weekNumber}</CardTitle>
-                      <Button
-                        onClick={() => {
-                          const nextDay = (week.days?.length || 0) + 1;
-                          addDayMutation.mutate({
-                            weekId: week.id,
-                            dayNumber: nextDay,
-                            name: `Day ${nextDay}`,
-                          });
-                        }}
-                        size="sm"
-                        variant="outline"
-                        data-testid={`button-add-day-week-${week.weekNumber}`}
-                      >
-                        <Plus className="h-3 w-3 mr-1" />
-                        Add Day
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  {week.days && week.days.length > 0 && (
-                    <CardContent className="space-y-3">
-                      {week.days.map((day) => (
-                        <div key={day.id} className="rounded-lg border p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <p className="font-medium text-sm">{day.name}</p>
-                            <Button
-                              onClick={() => {
-                                setSelectedWeek(week.weekNumber);
-                                setSelectedDay(day.dayNumber);
-                              }}
-                              size="sm"
-                              variant="ghost"
-                              data-testid={`button-add-exercise-day-${day.dayNumber}`}
-                            >
-                              <Plus className="h-3 w-3 mr-1" />
-                              Add Exercise
-                            </Button>
+              {/* Day Cards */}
+              {allDays.length === 0 ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12">
+                    <Calendar className="mb-4 h-12 w-12 text-muted-foreground" />
+                    <h3 className="mb-2 text-lg font-semibold">No Workout Days Yet</h3>
+                    <p className="text-center text-sm text-muted-foreground mb-4">
+                      Start by adding workout days to any week
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                allDays.map((day) => (
+                  <Card key={day.id} className="bg-muted/30" data-testid={`card-day-${day.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        {/* Left side - Day info */}
+                        <div className="flex gap-3 flex-1 min-w-0">
+                          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-md bg-primary/10">
+                            <Calendar className="h-6 w-6 text-primary" />
                           </div>
-                          {day.exercises && day.exercises.length > 0 && (
-                            <div className="space-y-1 text-sm">
-                              {day.exercises.map((ex) => (
-                                <div
-                                  key={ex.id}
-                                  className="flex items-center justify-between text-muted-foreground"
+                          <div className="flex-1 min-w-0">
+                            {editingDayId === day.id ? (
+                              <div className="flex gap-2 mb-2">
+                                <Input
+                                  value={editDayName}
+                                  onChange={(e) => setEditDayName(e.target.value)}
+                                  className="h-8 text-sm"
+                                  data-testid={`input-edit-day-name-${day.id}`}
+                                  autoFocus
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    // TODO: Implement update day API
+                                    toast({ title: "Update day feature coming soon" });
+                                    setEditingDayId(null);
+                                  }}
+                                  data-testid={`button-save-day-${day.id}`}
                                 >
-                                  <span>{ex.exercise.name}</span>
-                                  <span className="text-xs">
-                                    {ex.sets} × {ex.reps} {ex.intensity && `@ ${ex.intensity}`}
-                                  </span>
+                                  Save
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setEditingDayId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="font-semibold text-base">{day.name}</h3>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    onClick={() => {
+                                      setEditingDayId(day.id);
+                                      setEditDayName(day.name);
+                                    }}
+                                    data-testid={`button-edit-day-${day.id}`}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                  </Button>
                                 </div>
-                              ))}
-                            </div>
-                          )}
+                                <p className="text-sm text-muted-foreground">
+                                  Week {day.weekNumber}
+                                  {program.phase && ` • ${program.phase}`}
+                                </p>
+                              </>
+                            )}
+                            
+                            {/* Exercise List */}
+                            {day.exercises && day.exercises.length > 0 && (
+                              <ul className="mt-3 space-y-1.5">
+                                {day.exercises
+                                  .sort((a, b) => a.order - b.order)
+                                  .map((ex) => (
+                                    <li key={ex.id} className="flex items-start gap-2 text-sm">
+                                      <span className="text-muted-foreground mt-1">•</span>
+                                      <div className="flex-1 min-w-0">
+                                        <span className="text-foreground">{ex.exercise.name}</span>
+                                        {(ex.sets || ex.reps || ex.intensity) && (
+                                          <span className="text-muted-foreground ml-2">
+                                            {ex.sets && ex.reps && `${ex.sets} × ${ex.reps}`}
+                                            {ex.intensity && ` @ ${ex.intensity}`}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </li>
+                                  ))}
+                              </ul>
+                            )}
+                          </div>
                         </div>
-                      ))}
+
+                        {/* Right side - Action button */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedDayId(day.id)}
+                          data-testid={`button-edit-workout-${day.id}`}
+                          className="flex-shrink-0"
+                        >
+                          {day.exercises && day.exercises.length > 0 ? 'Edit workout' : 'Add exercises'}
+                        </Button>
+                      </div>
                     </CardContent>
-                  )}
+                  </Card>
+                ))
+              )}
+
+              {/* Add New Day Sections by Week */}
+              {programWeeks.map((week) => (
+                <Card key={week.id} className="border-dashed">
+                  <CardContent className="p-4">
+                    <Button
+                      variant="ghost"
+                      className="w-full"
+                      onClick={() => {
+                        const nextDay = (week.days?.length || 0) + 1;
+                        addDayMutation.mutate({
+                          weekId: week.id,
+                          dayNumber: nextDay,
+                          name: `Day ${nextDay}`,
+                        });
+                      }}
+                      data-testid={`button-add-day-week-${week.weekNumber}`}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Day to Week {week.weekNumber}
+                    </Button>
+                  </CardContent>
                 </Card>
               ))}
             </div>
           )}
         </div>
 
-        {/* Add Exercise Dialog */}
-        {selectedWeek !== null && selectedDay !== null && (
+        {/* Add/Edit Exercise Dialog */}
+        {selectedDayId && (
           <AddExerciseDialog
-            programWeeks={programWeeks || []}
-            selectedWeek={selectedWeek}
-            selectedDay={selectedDay}
+            day={allDays.find((d) => d.id === selectedDayId)!}
             exercises={exercises}
-            onClose={() => {
-              setSelectedWeek(null);
-              setSelectedDay(null);
-            }}
-            onAdd={(data) => {
-              addExerciseMutation.mutate(data);
-              setSelectedWeek(null);
-              setSelectedDay(null);
-            }}
+            onClose={() => setSelectedDayId(null)}
+            onAdd={(data) => addExerciseMutation.mutate(data)}
           />
         )}
       </DialogContent>
@@ -525,106 +575,170 @@ function ProgramBuilderDialog({
 
 // Add Exercise Dialog
 function AddExerciseDialog({
-  programWeeks,
-  selectedWeek,
-  selectedDay,
+  day,
   exercises,
   onClose,
   onAdd,
 }: {
-  programWeeks: any[];
-  selectedWeek: number;
-  selectedDay: number;
+  day: ProgramDay & { exercises: (ProgramExercise & { exercise: Exercise })[] };
   exercises: Exercise[];
   onClose: () => void;
-  onAdd: (data: { dayId: string; exerciseId: string; order: number; sets: number; reps: string; intensity?: string }) => void;
+  onAdd: (data: { dayId: string; exerciseId: string; order: number; sets: number; reps: string; intensity?: string; notes?: string }) => void;
 }) {
   const [selectedExercise, setSelectedExercise] = useState("");
   const [sets, setSets] = useState("3");
   const [reps, setReps] = useState("5");
   const [intensity, setIntensity] = useState("");
+  const [notes, setNotes] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const week = programWeeks.find((w) => w.weekNumber === selectedWeek);
-  const day = week?.days?.find((d: ProgramDay) => d.dayNumber === selectedDay);
+  // Filter exercises based on search
+  const filteredExercises = exercises.filter((ex) =>
+    ex.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleAdd = () => {
+    if (!selectedExercise || !sets || !reps) return;
+    onAdd({
+      dayId: day.id,
+      exerciseId: selectedExercise,
+      order: (day.exercises?.length || 0) + 1,
+      sets: parseInt(sets),
+      reps,
+      intensity: intensity || undefined,
+      notes: notes || undefined,
+    });
+    // Reset form
+    setSelectedExercise("");
+    setSets("3");
+    setReps("5");
+    setIntensity("");
+    setNotes("");
+  };
 
   if (!day) return null;
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Add Exercise to Week {selectedWeek}, Day {selectedDay}</DialogTitle>
-          <DialogDescription>Select an exercise and configure sets/reps</DialogDescription>
+          <DialogTitle>{day.name}</DialogTitle>
+          <DialogDescription>Add exercises to this workout day</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label htmlFor="exercise">Exercise</Label>
-            <Select value={selectedExercise} onValueChange={setSelectedExercise}>
-              <SelectTrigger data-testid="select-exercise">
-                <SelectValue placeholder="Select exercise..." />
-              </SelectTrigger>
-              <SelectContent>
-                {exercises.map((ex) => (
-                  <SelectItem key={ex.id} value={ex.id}>
-                    {ex.name}
-                  </SelectItem>
+
+        {/* Current Exercises List */}
+        {day.exercises && day.exercises.length > 0 && (
+          <div className="border rounded-md p-3 bg-muted/30">
+            <h4 className="text-sm font-semibold mb-2">Current Exercises:</h4>
+            <ul className="space-y-1">
+              {day.exercises
+                .sort((a, b) => a.order - b.order)
+                .map((ex, idx) => (
+                  <li key={ex.id} className="flex items-start gap-2 text-sm">
+                    <span className="text-muted-foreground">{idx + 1}.</span>
+                    <div className="flex-1">
+                      <span className="text-foreground">{ex.exercise.name}</span>
+                      <span className="text-muted-foreground ml-2">
+                        {ex.sets} × {ex.reps}
+                        {ex.intensity && ` @ ${ex.intensity}`}
+                      </span>
+                    </div>
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
+            </ul>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+        )}
+
+        <div className="flex-1 overflow-y-auto space-y-4 py-2">
+          <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="sets">Sets</Label>
+              <Label htmlFor="exercise-search">Search Exercise</Label>
               <Input
-                id="sets"
-                type="number"
-                min="1"
-                value={sets}
-                onChange={(e) => setSets(e.target.value)}
-                data-testid="input-sets"
+                id="exercise-search"
+                placeholder="Search exercises..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                data-testid="input-exercise-search"
               />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="reps">Reps</Label>
+              <Label htmlFor="exercise">Select Exercise</Label>
+              <Select value={selectedExercise} onValueChange={setSelectedExercise}>
+                <SelectTrigger data-testid="select-exercise">
+                  <SelectValue placeholder="Choose an exercise..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {filteredExercises.length === 0 ? (
+                    <div className="p-2 text-sm text-muted-foreground text-center">
+                      No exercises found
+                    </div>
+                  ) : (
+                    filteredExercises.map((ex) => (
+                      <SelectItem key={ex.id} value={ex.id}>
+                        {ex.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="sets">Sets</Label>
+                <Input
+                  id="sets"
+                  type="number"
+                  min="1"
+                  value={sets}
+                  onChange={(e) => setSets(e.target.value)}
+                  data-testid="input-sets"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="reps">Reps</Label>
+                <Input
+                  id="reps"
+                  placeholder="e.g., 5 or 8-12"
+                  value={reps}
+                  onChange={(e) => setReps(e.target.value)}
+                  data-testid="input-reps"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="intensity">Intensity (Optional)</Label>
               <Input
-                id="reps"
-                placeholder="e.g., 5 or 8-12"
-                value={reps}
-                onChange={(e) => setReps(e.target.value)}
-                data-testid="input-reps"
+                id="intensity"
+                placeholder="e.g., 75%, RPE 8, or @8"
+                value={intensity}
+                onChange={(e) => setIntensity(e.target.value)}
+                data-testid="input-intensity"
               />
             </div>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="intensity">Intensity (Optional)</Label>
-            <Input
-              id="intensity"
-              placeholder="e.g., 75% or RPE 8"
-              value={intensity}
-              onChange={(e) => setIntensity(e.target.value)}
-              data-testid="input-intensity"
-            />
+            <div className="grid gap-2">
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Textarea
+                id="notes"
+                placeholder="Special instructions, tempo, rest time, etc."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                data-testid="input-notes"
+                className="min-h-[80px]"
+              />
+            </div>
           </div>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
+
+        <DialogFooter className="flex-row gap-2">
+          <Button variant="outline" onClick={onClose} data-testid="button-close-dialog">
+            Done
           </Button>
           <Button
-            onClick={() => {
-              if (!selectedExercise || !sets || !reps) return;
-              onAdd({
-                dayId: day.id,
-                exerciseId: selectedExercise,
-                order: (day.exercises?.length || 0) + 1,
-                sets: parseInt(sets),
-                reps,
-                intensity: intensity || undefined,
-              });
-            }}
+            onClick={handleAdd}
             disabled={!selectedExercise || !sets || !reps}
             data-testid="button-submit-exercise"
           >
+            <Plus className="h-4 w-4 mr-1" />
             Add Exercise
           </Button>
         </DialogFooter>
