@@ -83,7 +83,7 @@ export default function Programs() {
       return program;
     },
     onSuccess: (program) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', currentOrganization?.id] });
       toast({ title: "Success", description: `Program created with ${program.durationWeeks} weeks` });
       setCreateDialogOpen(false);
       setProgramName("");

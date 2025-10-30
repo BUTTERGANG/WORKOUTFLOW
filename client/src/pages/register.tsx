@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -56,11 +56,12 @@ export default function Register() {
     registerMutation.mutate({ firstName, lastName, email, userType });
   };
 
-  // If user is already registered, redirect to dashboard
-  if (user?.firstName && user?.lastName) {
-    setLocation("/dashboard");
-    return null;
-  }
+  // If user is already registered, redirect to dashboard (in effect to avoid render loop)
+  useEffect(() => {
+    if (user?.firstName && user?.lastName) {
+      setLocation("/dashboard");
+    }
+  }, [user, setLocation]);
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4 bg-background">
