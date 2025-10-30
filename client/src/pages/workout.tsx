@@ -271,23 +271,23 @@ export default function Workout() {
   return (
     <div className="h-full overflow-auto bg-background">
       <div className="mx-auto max-w-4xl p-4">
-        {/* Workout Header */}
-        <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-foreground">Today's Workout</h1>
+        {/* Workout Header - Mobile Optimized */}
+        <div className="mb-4 sm:mb-6">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Today's Workout</h1>
             {activeSession ? (
-              <Badge variant="default" className="gap-1" data-testid="badge-workout-status">
-                <Timer className="h-3 w-3" />
-                Active Session
+              <Badge variant="default" className="h-7 gap-1 px-3 text-sm" data-testid="badge-workout-status">
+                <Timer className="h-4 w-4" />
+                Active
               </Badge>
             ) : (
-              <Badge variant="outline" data-testid="badge-workout-status">
+              <Badge variant="outline" className="h-7 px-3 text-sm" data-testid="badge-workout-status">
                 Not Started
               </Badge>
             )}
           </div>
           {activeAssignment && (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground sm:text-base">
               {activeAssignment.program.name}
             </p>
           )}
@@ -317,7 +317,7 @@ export default function Workout() {
               <Button
                 onClick={handleStartWorkout}
                 size="lg"
-                className="gap-2"
+                className="w-full gap-2 sm:w-auto"
                 data-testid="button-start-workout"
               >
                 <Dumbbell className="h-5 w-5" />
@@ -330,17 +330,17 @@ export default function Workout() {
         {/* Active Workout */}
         {activeSession && currentPlannedExercise && (
           <>
-            {/* Progress Indicator */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-muted-foreground">
+            {/* Progress Indicator - Mobile Optimized */}
+            <div className="mb-4 sm:mb-6">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground sm:text-base">
                   Exercise {currentExerciseIndex + 1} of {plannedExercises?.length || 0}
                 </span>
-                <span className="text-sm font-medium">
+                <span className="text-base font-bold sm:text-sm sm:font-medium">
                   Set {completedSets + 1} of {totalSets}
                 </span>
               </div>
-              <div className="h-2 w-full rounded-full bg-muted">
+              <div className="h-3 w-full rounded-full bg-muted sm:h-2">
                 <div
                   className="h-full rounded-full bg-primary transition-all"
                   style={{ width: `${(completedSets / totalSets) * 100}%` }}
@@ -348,18 +348,18 @@ export default function Workout() {
               </div>
             </div>
 
-            {/* Current Exercise Card */}
-            <Card className="mb-6">
+            {/* Current Exercise Card - Mobile Optimized */}
+            <Card className="mb-4 sm:mb-6">
               <CardHeader className="space-y-0 pb-4">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-xl">{currentPlannedExercise.exercise.name}</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-xl font-bold sm:text-2xl">{currentPlannedExercise.exercise.name}</CardTitle>
+                    <p className="mt-2 text-base text-muted-foreground sm:mt-1 sm:text-sm">
                       {currentPlannedExercise.sets} sets × {currentPlannedExercise.reps} reps
                       {currentPlannedExercise.intensity && ` @ ${currentPlannedExercise.intensity}`}
                     </p>
                   </div>
-                  <Dumbbell className="h-6 w-6 text-muted-foreground" />
+                  <Dumbbell className="h-7 w-7 flex-shrink-0 text-muted-foreground sm:h-6 sm:w-6" />
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -378,23 +378,23 @@ export default function Workout() {
                   </div>
                 )}
 
-                {/* Log Set Form */}
-                <div className="space-y-4">
+                {/* Log Set Form - Mobile Optimized */}
+                <div className="space-y-6">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="weight">Weight (lbs)</Label>
+                    <div className="space-y-3">
+                      <Label htmlFor="weight" className="text-base font-medium sm:text-sm">Weight (lbs)</Label>
                       <Input
                         id="weight"
                         type="number"
                         placeholder="225"
                         value={weight}
                         onChange={(e) => setWeight(e.target.value)}
-                        className="text-lg"
+                        className="text-lg font-mono"
                         data-testid="input-weight"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="reps">Reps</Label>
+                    <div className="space-y-3">
+                      <Label htmlFor="reps" className="text-base font-medium sm:text-sm">Reps</Label>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -426,8 +426,8 @@ export default function Workout() {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="rpe">RPE (Rate of Perceived Exertion)</Label>
+                  <div className="space-y-3">
+                    <Label htmlFor="rpe" className="text-base font-medium sm:text-sm">RPE (Rate of Perceived Exertion)</Label>
                     <Select value={rpe} onValueChange={setRpe}>
                       <SelectTrigger data-testid="select-rpe">
                         <SelectValue />
@@ -462,32 +462,31 @@ export default function Workout() {
                   {/* Log Set Button */}
                   <Button
                     onClick={handleLogSet}
-                    className="w-full"
+                    className="w-full gap-2"
                     size="lg"
                     disabled={!weight || logSetMutation.isPending}
                     data-testid="button-log-set"
                   >
-                    <Check className="h-5 w-5 mr-2" />
+                    <Check className="h-5 w-5" />
                     Log Set
                   </Button>
                 </div>
 
-                {/* Rest Timer */}
+                {/* Rest Timer - Mobile Optimized */}
                 {isResting && (
-                  <div className="rounded-lg bg-primary/10 p-4 text-center">
-                    <Timer className="mx-auto mb-2 h-8 w-8 text-primary" />
-                    <p className="text-2xl font-bold font-mono">
+                  <div className="rounded-lg bg-primary/10 p-6 text-center">
+                    <Timer className="mx-auto mb-3 h-10 w-10 text-primary" />
+                    <p className="font-mono text-4xl font-bold sm:text-3xl md:text-2xl">
                       {Math.floor(restTimer / 60)}:{(restTimer % 60).toString().padStart(2, '0')}
                     </p>
-                    <p className="text-sm text-muted-foreground">Rest time</p>
+                    <p className="mt-2 text-sm text-muted-foreground">Rest time</p>
                     <Button
                       variant="ghost"
-                      size="sm"
                       onClick={() => {
                         setIsResting(false);
                         setRestTimer(0);
                       }}
-                      className="mt-2"
+                      className="mt-3"
                     >
                       Skip Rest
                     </Button>
