@@ -12,6 +12,7 @@ import {
   pgEnum,
   real,
   boolean,
+  unique,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -151,6 +152,7 @@ export const programDays = pgTable("program_days", {
   notes: text("notes"),
 }, (table) => [
   index("idx_program_days_week_id").on(table.weekId),
+  unique("unique_week_day").on(table.weekId, table.dayNumber),
 ]);
 
 export const programExercises = pgTable("program_exercises", {
