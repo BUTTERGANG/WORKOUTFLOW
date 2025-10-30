@@ -60,14 +60,31 @@ export default function Programs() {
 
   const createProgramMutation = useMutation({
     mutationFn: async (data: { name: string; description: string; durationWeeks: number; organizationId: string }) => {
-      return await apiRequest<Program>("/api/programs", {
+      // Create the program
+      const program = await apiRequest<Program>("/api/programs", {
         method: "POST",
         body: data,
       });
+      
+      // Auto-populate all weeks based on duration
+      const weekPromises = [];
+      for (let i = 1; i <= data.durationWeeks; i++) {
+        weekPromises.push(
+          apiRequest(`/api/programs/${program.id}/weeks`, {
+            method: "POST",
+            body: { weekNumber: i },
+          })
+        );
+      }
+      
+      // Wait for all weeks to be created
+      await Promise.all(weekPromises);
+      
+      return program;
     },
     onSuccess: (program) => {
       queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
-      toast({ title: "Success", description: "Program created" });
+      toast({ title: "Success", description: `Program created with ${program.durationWeeks} weeks` });
       setCreateDialogOpen(false);
       setProgramName("");
       setProgramDescription("");
