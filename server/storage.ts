@@ -358,12 +358,60 @@ export class DatabaseStorage implements IStorage {
     return exercise;
   }
 
-  async getProgramWeeks(programId: string): Promise<ProgramWeek[]> {
-    return await db
+  async getProgramWeeks(programId: string): Promise<any[]> {
+    // Fetch all weeks for the program
+    const weeks = await db
       .select()
       .from(programWeeks)
       .where(eq(programWeeks.programId, programId))
       .orderBy(programWeeks.weekNumber);
+
+    // For each week, fetch its days with exercises
+    const weeksWithDays = await Promise.all(
+      weeks.map(async (week) => {
+        // Fetch days for this week
+        const days = await db
+          .select()
+          .from(programDays)
+          .where(eq(programDays.weekId, week.id))
+          .orderBy(programDays.dayNumber);
+
+        // For each day, fetch its exercises
+        const daysWithExercises = await Promise.all(
+          days.map(async (day) => {
+            // Fetch exercises with exercise details
+            const exercisesData = await db
+              .select({
+                id: programExercises.id,
+                dayId: programExercises.dayId,
+                exerciseId: programExercises.exerciseId,
+                order: programExercises.order,
+                sets: programExercises.sets,
+                reps: programExercises.reps,
+                intensity: programExercises.intensity,
+                notes: programExercises.notes,
+                exercise: exercises,
+              })
+              .from(programExercises)
+              .leftJoin(exercises, eq(programExercises.exerciseId, exercises.id))
+              .where(eq(programExercises.dayId, day.id))
+              .orderBy(programExercises.order);
+
+            return {
+              ...day,
+              exercises: exercisesData,
+            };
+          })
+        );
+
+        return {
+          ...week,
+          days: daysWithExercises,
+        };
+      })
+    );
+
+    return weeksWithDays;
   }
 
   async getProgramWeek(id: string): Promise<ProgramWeek | undefined> {

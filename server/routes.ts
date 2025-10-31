@@ -447,6 +447,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const weeks = await storage.getProgramWeeks(req.params.programId);
+      
+      // Prevent caching to ensure UI updates immediately
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      
       res.json(weeks);
     } catch (error) {
       console.error("Error fetching program weeks:", error);
