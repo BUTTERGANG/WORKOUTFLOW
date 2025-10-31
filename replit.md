@@ -52,6 +52,25 @@ This platform provides coaches with powerful tools to create training programs, 
 
 ## Recent Changes
 
+- **2025-10-31**: Authentication System Clarification ✅
+  - 🔐 **Authentication**: Using Replit Auth (OpenID Connect provider)
+    - Supports **SSO**: Google, GitHub, X (Twitter), Apple sign-in
+    - Supports **Email/Password**: Traditional email/password authentication
+    - All handled through OIDC flow - no manual password management needed
+  - 📝 **Registration Flow**:
+    - Users first authenticate via SSO or email/password (handled by Replit)
+    - After authentication, users complete intake form (firstName, lastName, email, userType)
+    - User profile stored in database with role (athlete/coach)
+    - Automatic redirect to dashboard after registration
+  - ✅ **Database Integration**:
+    - users.id is VARCHAR (matches OIDC subject claim format)
+    - upsertUser properly syncs OIDC claims with database
+    - Registration endpoint updates user profile after authentication
+  - 🔒 **Session Management**:
+    - PostgreSQL session storage (connect-pg-simple)
+    - Automatic token refresh with refresh_token
+    - Secure cookie settings (httpOnly, secure, 1-week TTL)
+
 - **2025-10-30**: Critical Auth & UX Fixes + Dark Mode + Habit Tracker ✅
   - 🔒 **Critical Auth Fixes**:
     - Fixed useAuth hook to handle 401 errors gracefully (returns null instead of crashing)
