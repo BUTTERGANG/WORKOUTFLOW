@@ -32,7 +32,7 @@ export default function Register() {
     onSuccess: () => {
       toast({ title: "Registration successful", description: "Welcome to the platform!" });
       // Reload page to refresh auth state
-      window.location.href = "/dashboard";
+      window.location.href = "/";
     },
     onError: (error: any) => {
       toast({
@@ -56,10 +56,10 @@ export default function Register() {
     registerMutation.mutate({ firstName, lastName, email, userType });
   };
 
-  // If user is already registered, redirect to dashboard (in effect to avoid render loop)
+  // If user is already registered, redirect to home (in effect to avoid render loop)
   useEffect(() => {
     if (user?.firstName && user?.lastName) {
-      setLocation("/dashboard");
+      setLocation("/");
     }
   }, [user, setLocation]);
 
