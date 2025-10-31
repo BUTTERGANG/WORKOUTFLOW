@@ -381,7 +381,7 @@ function ProgramBuilderDialog({
 
   // Flatten all days from all weeks for card-based display
   const allDays = programWeeks?.flatMap((week) =>
-    week.days.map((day) => ({
+    (week.days || []).map((day) => ({
       ...day,
       weekNumber: week.weekNumber,
       weekId: week.id,
