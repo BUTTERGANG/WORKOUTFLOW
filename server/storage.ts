@@ -1033,47 +1033,82 @@ export class DatabaseStorage implements IStorage {
           const dayIds = days.map(d => d.id);
           
           if (dayIds.length > 0) {
-            // Step 8: Delete all exercises for these days
+            // Step 8: Get all workout sessions for these days
+            const sessions = await tx
+              .select({ id: workoutSessions.id })
+              .from(workoutSessions)
+              .where(inArray(workoutSessions.programDayId, dayIds));
+            
+            const sessionIds = sessions.map(s => s.id);
+            
+            if (sessionIds.length > 0) {
+              // Step 8a: Get all exercise logs for these sessions
+              const logs = await tx
+                .select({ id: exerciseLogs.id })
+                .from(exerciseLogs)
+                .where(inArray(exerciseLogs.sessionId, sessionIds));
+              
+              const logIds = logs.map(l => l.id);
+              
+              if (logIds.length > 0) {
+                // Step 8b: Delete all set logs
+                await tx
+                  .delete(setLogs)
+                  .where(inArray(setLogs.exerciseLogId, logIds));
+              }
+              
+              // Step 8c: Delete all exercise logs
+              await tx
+                .delete(exerciseLogs)
+                .where(inArray(exerciseLogs.sessionId, sessionIds));
+            }
+            
+            // Step 8d: Delete all workout sessions
+            await tx
+              .delete(workoutSessions)
+              .where(inArray(workoutSessions.programDayId, dayIds));
+            
+            // Step 9: Delete all program exercises for these days
             await tx
               .delete(programExercises)
               .where(inArray(programExercises.dayId, dayIds));
           }
           
-          // Step 9: Delete all days
+          // Step 10: Delete all days
           await tx
             .delete(programDays)
             .where(inArray(programDays.weekId, weekIds));
         }
         
-        // Step 10: Delete all weeks
+        // Step 11: Delete all weeks
         await tx
           .delete(programWeeks)
           .where(inArray(programWeeks.programId, programIds));
         
-        // Step 11: Delete all program assignments
+        // Step 12: Delete all program assignments
         await tx
           .delete(programAssignments)
           .where(inArray(programAssignments.programId, programIds));
         
-        // Step 12: Delete all programs
+        // Step 13: Delete all programs
         await tx
           .delete(programs)
           .where(eq(programs.organizationId, id));
       }
       
-      // Step 13: Delete all custom exercises for this organization
+      // Step 14: Delete all custom exercises for this organization
       await tx
         .delete(exercises)
         .where(eq(exercises.organizationId, id));
       
-      // Step 14: Delete all teams
+      // Step 15: Delete all teams
       if (teamIds.length > 0) {
         await tx
           .delete(teams)
           .where(eq(teams.organizationId, id));
       }
       
-      // Step 15: Finally, delete the organization itself
+      // Step 16: Finally, delete the organization itself
       await tx
         .delete(organizations)
         .where(eq(organizations.id, id));
