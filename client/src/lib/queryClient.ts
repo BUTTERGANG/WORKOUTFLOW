@@ -23,7 +23,12 @@ export async function apiRequest<T = any>(
   });
 
   await throwIfResNotOk(res);
-  return await res.json();
+  
+  try {
+    return await res.json();
+  } catch (error) {
+    throw new Error(`Failed to parse JSON response from ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -32,7 +37,8 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    const url = queryKey.join("/") as string;
+    const res = await fetch(url, {
       credentials: "include",
     });
 
@@ -41,7 +47,12 @@ export const getQueryFn: <T>(options: {
     }
 
     await throwIfResNotOk(res);
-    return await res.json();
+    
+    try {
+      return await res.json();
+    } catch (error) {
+      throw new Error(`Failed to parse JSON response from ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   };
 
 export const queryClient = new QueryClient({

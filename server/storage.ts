@@ -979,11 +979,130 @@ export class DatabaseStorage implements IStorage {
   // ============================================
 
   async deleteOrganization(id: string): Promise<void> {
-    await db.delete(organizations).where(eq(organizations.id, id));
+    // CASCADE DELETE: Remove organization and all its children in a transaction
+    await db.transaction(async (tx) => {
+      // Step 1: Get all teams in this organization
+      const orgTeams = await tx
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.organizationId, id));
+      
+      const teamIds = orgTeams.map(t => t.id);
+      
+      if (teamIds.length > 0) {
+        // Step 2: Delete all join requests for teams in this organization
+        await tx
+          .delete(teamJoinRequests)
+          .where(inArray(teamJoinRequests.teamId, teamIds));
+        
+        // Step 3: Delete all team members for teams in this organization
+        await tx
+          .delete(teamMembers)
+          .where(inArray(teamMembers.teamId, teamIds));
+        
+        // Step 4: Delete all program assignments for teams in this organization
+        await tx
+          .delete(programAssignments)
+          .where(inArray(programAssignments.teamId, teamIds));
+      }
+      
+      // Step 5: Get all programs in this organization
+      const orgPrograms = await tx
+        .select({ id: programs.id })
+        .from(programs)
+        .where(eq(programs.organizationId, id));
+      
+      const programIds = orgPrograms.map(p => p.id);
+      
+      if (programIds.length > 0) {
+        // Step 6: Get all weeks for these programs
+        const weeks = await tx
+          .select({ id: programWeeks.id })
+          .from(programWeeks)
+          .where(inArray(programWeeks.programId, programIds));
+        
+        const weekIds = weeks.map(w => w.id);
+        
+        if (weekIds.length > 0) {
+          // Step 7: Get all days for these weeks
+          const days = await tx
+            .select({ id: programDays.id })
+            .from(programDays)
+            .where(inArray(programDays.weekId, weekIds));
+          
+          const dayIds = days.map(d => d.id);
+          
+          if (dayIds.length > 0) {
+            // Step 8: Delete all exercises for these days
+            await tx
+              .delete(programExercises)
+              .where(inArray(programExercises.dayId, dayIds));
+          }
+          
+          // Step 9: Delete all days
+          await tx
+            .delete(programDays)
+            .where(inArray(programDays.weekId, weekIds));
+        }
+        
+        // Step 10: Delete all weeks
+        await tx
+          .delete(programWeeks)
+          .where(inArray(programWeeks.programId, programIds));
+        
+        // Step 11: Delete all program assignments
+        await tx
+          .delete(programAssignments)
+          .where(inArray(programAssignments.programId, programIds));
+        
+        // Step 12: Delete all programs
+        await tx
+          .delete(programs)
+          .where(eq(programs.organizationId, id));
+      }
+      
+      // Step 13: Delete all custom exercises for this organization
+      await tx
+        .delete(exercises)
+        .where(eq(exercises.organizationId, id));
+      
+      // Step 14: Delete all teams
+      if (teamIds.length > 0) {
+        await tx
+          .delete(teams)
+          .where(eq(teams.organizationId, id));
+      }
+      
+      // Step 15: Finally, delete the organization itself
+      await tx
+        .delete(organizations)
+        .where(eq(organizations.id, id));
+    });
   }
 
   async deleteTeam(id: string): Promise<void> {
-    await db.delete(teams).where(eq(teams.id, id));
+    // CASCADE DELETE: Remove team and all its children in a transaction
+    await db.transaction(async (tx) => {
+      // Step 1: Delete all join requests for this team
+      await tx
+        .delete(teamJoinRequests)
+        .where(eq(teamJoinRequests.teamId, id));
+      
+      // Step 2: Delete all team members
+      await tx
+        .delete(teamMembers)
+        .where(eq(teamMembers.teamId, id));
+      
+      // Step 3: Delete all program assignments for this team
+      await tx
+        .delete(programAssignments)
+        .where(eq(programAssignments.teamId, id));
+      
+      // Step 4: Finally, delete the team itself
+      await tx
+        .delete(teams)
+        .where(eq(teams.id, id));
+    });
   }
 
   async removeTeamMember(teamId: string, userId: string): Promise<void> {
