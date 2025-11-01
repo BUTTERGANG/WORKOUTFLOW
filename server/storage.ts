@@ -46,7 +46,8 @@ import {
   type InsertMessage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
+import { ConflictError, ValidationError } from "./errors";
 
 export interface IStorage {
   // User operations (Required for Replit Auth)
@@ -86,6 +87,16 @@ export interface IStorage {
   
   // Program operations
   createProgram(program: InsertProgram): Promise<Program>;
+  createCompleteProgram(data: {
+    program: InsertProgram;
+    weeks: Array<{
+      week: Omit<InsertProgramWeek, 'programId'>;
+      days: Array<{
+        day: Omit<InsertProgramDay, 'weekId'>;
+        exercises: Array<Omit<InsertProgramExercise, 'dayId'>>;
+      }>;
+    }>;
+  }): Promise<Program>;
   getProgram(id: string): Promise<Program | undefined>;
   getOrganizationPrograms(organizationId: string): Promise<Program[]>;
   createProgramWeek(week: InsertProgramWeek): Promise<ProgramWeek>;
@@ -477,6 +488,122 @@ export class DatabaseStorage implements IStorage {
     return program;
   }
 
+  async createCompleteProgram(data: {
+    program: InsertProgram;
+    weeks: Array<{
+      week: Omit<InsertProgramWeek, 'programId'>;
+      days: Array<{
+        day: Omit<InsertProgramDay, 'weekId'>;
+        exercises: Array<Omit<InsertProgramExercise, 'dayId'>>;
+      }>;
+    }>;
+  }): Promise<Program> {
+    // CREATE COMPLETE PROGRAM: All-or-nothing transaction with validation
+    return await db.transaction(async (tx) => {
+      // Validate program structure before creating anything
+      const weekNumbers = new Set<number>();
+      
+      for (const weekData of data.weeks) {
+        // Validate week number is positive
+        if (weekData.week.weekNumber < 1) {
+          throw new ValidationError('Week number must be at least 1');
+        }
+        
+        // Check for duplicate week numbers
+        if (weekNumbers.has(weekData.week.weekNumber)) {
+          throw new ConflictError(`Week ${weekData.week.weekNumber} appears multiple times in program`);
+        }
+        weekNumbers.add(weekData.week.weekNumber);
+        
+        // Validate days in this week
+        const dayNumbers = new Set<number>();
+        for (const dayData of weekData.days) {
+          // Validate day number is within range
+          if (dayData.day.dayNumber < 1 || dayData.day.dayNumber > 7) {
+            throw new ValidationError('Day number must be between 1 and 7');
+          }
+          
+          // Check for duplicate day numbers in this week
+          if (dayNumbers.has(dayData.day.dayNumber)) {
+            throw new ConflictError(`Day ${dayData.day.dayNumber} appears multiple times in week ${weekData.week.weekNumber}`);
+          }
+          dayNumbers.add(dayData.day.dayNumber);
+          
+          // Validate exercises in this day
+          const exerciseOrders = new Set<number>();
+          for (const exercise of dayData.exercises) {
+            // Validate sets is positive
+            if (exercise.sets !== null && exercise.sets !== undefined && exercise.sets < 1) {
+              throw new ValidationError('Sets must be at least 1');
+            }
+            
+            // Validate order is positive
+            if (exercise.order < 1) {
+              throw new ValidationError('Exercise order must be at least 1');
+            }
+            
+            // Check for duplicate orders in this day
+            if (exerciseOrders.has(exercise.order)) {
+              throw new ConflictError(`Exercise order ${exercise.order} appears multiple times in week ${weekData.week.weekNumber}, day ${dayData.day.dayNumber}`);
+            }
+            exerciseOrders.add(exercise.order);
+            
+            // Verify exercise exists
+            const exerciseExists = await tx
+              .select()
+              .from(exercises)
+              .where(eq(exercises.id, exercise.exerciseId))
+              .limit(1);
+            
+            if (exerciseExists.length === 0) {
+              throw new ValidationError(`Exercise ${exercise.exerciseId} does not exist`);
+            }
+          }
+        }
+      }
+
+      // All validation passed - create the program
+      const [program] = await tx
+        .insert(programs)
+        .values(data.program)
+        .returning();
+
+      // Create all weeks, days, and exercises
+      for (const weekData of data.weeks) {
+        const [week] = await tx
+          .insert(programWeeks)
+          .values({
+            ...weekData.week,
+            programId: program.id,
+          })
+          .returning();
+
+        for (const dayData of weekData.days) {
+          const [day] = await tx
+            .insert(programDays)
+            .values({
+              ...dayData.day,
+              weekId: week.id,
+            })
+            .returning();
+
+          if (dayData.exercises.length > 0) {
+            const exerciseValues = dayData.exercises.map((ex) => ({
+              ...ex,
+              dayId: day.id,
+            }));
+
+            await tx
+              .insert(programExercises)
+              .values(exerciseValues);
+          }
+        }
+      }
+
+      return program;
+    });
+  }
+
   async getProgram(id: string): Promise<Program | undefined> {
     const [program] = await db
       .select()
@@ -494,6 +621,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProgramWeek(weekData: InsertProgramWeek): Promise<ProgramWeek> {
+    // Validate week number is positive
+    if (weekData.weekNumber < 1) {
+      throw new ValidationError('Week number must be at least 1');
+    }
+
+    // Check for duplicate week number in the same program
+    const existing = await db
+      .select()
+      .from(programWeeks)
+      .where(
+        and(
+          eq(programWeeks.programId, weekData.programId),
+          eq(programWeeks.weekNumber, weekData.weekNumber)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      throw new ConflictError(`Week ${weekData.weekNumber} already exists in this program`);
+    }
+
     const [week] = await db
       .insert(programWeeks)
       .values(weekData)
@@ -502,6 +650,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProgramDay(dayData: InsertProgramDay): Promise<ProgramDay> {
+    // Validate day number is within reasonable range (1-7 for weekly programs)
+    if (dayData.dayNumber < 1 || dayData.dayNumber > 7) {
+      throw new ValidationError('Day number must be between 1 and 7');
+    }
+
+    // Check for duplicate day number in the same week
+    const existing = await db
+      .select()
+      .from(programDays)
+      .where(
+        and(
+          eq(programDays.weekId, dayData.weekId),
+          eq(programDays.dayNumber, dayData.dayNumber)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      throw new ConflictError(`Day ${dayData.dayNumber} already exists in this week`);
+    }
+
     const [day] = await db
       .insert(programDays)
       .values(dayData)
@@ -510,6 +679,43 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProgramExercise(exerciseData: InsertProgramExercise): Promise<ProgramExercise> {
+    // Validate sets is positive
+    if (exerciseData.sets !== null && exerciseData.sets !== undefined && exerciseData.sets < 1) {
+      throw new ValidationError('Sets must be at least 1');
+    }
+
+    // Validate order is positive
+    if (exerciseData.order < 1) {
+      throw new ValidationError('Exercise order must be at least 1');
+    }
+
+    // Verify exercise exists
+    const exerciseExists = await db
+      .select()
+      .from(exercises)
+      .where(eq(exercises.id, exerciseData.exerciseId))
+      .limit(1);
+
+    if (exerciseExists.length === 0) {
+      throw new ValidationError('Exercise does not exist');
+    }
+
+    // Check for duplicate order in the same day
+    const existing = await db
+      .select()
+      .from(programExercises)
+      .where(
+        and(
+          eq(programExercises.dayId, exerciseData.dayId),
+          eq(programExercises.order, exerciseData.order)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      throw new ConflictError(`Exercise order ${exerciseData.order} is already used in this day`);
+    }
+
     const [exercise] = await db
       .insert(programExercises)
       .values(exerciseData)
@@ -518,59 +724,71 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProgramWeeks(programId: string): Promise<any[]> {
-    // Fetch all weeks for the program
-    const weeks = await db
-      .select()
-      .from(programWeeks)
-      .where(eq(programWeeks.programId, programId))
-      .orderBy(programWeeks.weekNumber);
-
-    // For each week, fetch its days with exercises
-    const weeksWithDays = await Promise.all(
-      weeks.map(async (week) => {
-        // Fetch days for this week
-        const days = await db
-          .select()
-          .from(programDays)
-          .where(eq(programDays.weekId, week.id))
-          .orderBy(programDays.dayNumber);
-
-        // For each day, fetch its exercises
-        const daysWithExercises = await Promise.all(
-          days.map(async (day) => {
-            // Fetch exercises with exercise details
-            const exercisesData = await db
-              .select({
-                id: programExercises.id,
-                dayId: programExercises.dayId,
-                exerciseId: programExercises.exerciseId,
-                order: programExercises.order,
-                sets: programExercises.sets,
-                reps: programExercises.reps,
-                intensity: programExercises.intensity,
-                notes: programExercises.notes,
-                exercise: exercises,
-              })
-              .from(programExercises)
-              .leftJoin(exercises, eq(programExercises.exerciseId, exercises.id))
-              .where(eq(programExercises.dayId, day.id))
-              .orderBy(programExercises.order);
-
-            return {
-              ...day,
-              exercises: exercisesData,
-            };
-          })
-        );
-
-        return {
-          ...week,
-          days: daysWithExercises,
-        };
+    // OPTIMIZED: Single query with JOINs instead of N+1 queries
+    // Fetch all weeks, days, and exercises in one query
+    const results = await db
+      .select({
+        week: programWeeks,
+        day: programDays,
+        programExercise: programExercises,
+        exercise: exercises,
       })
-    );
+      .from(programWeeks)
+      .leftJoin(programDays, eq(programWeeks.id, programDays.weekId))
+      .leftJoin(programExercises, eq(programDays.id, programExercises.dayId))
+      .leftJoin(exercises, eq(programExercises.exerciseId, exercises.id))
+      .where(eq(programWeeks.programId, programId))
+      .orderBy(programWeeks.weekNumber, programDays.dayNumber, programExercises.order);
 
-    return weeksWithDays;
+    // Group results in memory
+    const weeksMap = new Map<string, any>();
+
+    for (const row of results) {
+      const { week, day, programExercise, exercise } = row;
+
+      // Initialize week if not exists
+      if (!weeksMap.has(week.id)) {
+        weeksMap.set(week.id, {
+          ...week,
+          days: new Map<string, any>(),
+        });
+      }
+
+      const weekData = weeksMap.get(week.id);
+
+      // If there's a day, add it
+      if (day) {
+        if (!weekData.days.has(day.id)) {
+          weekData.days.set(day.id, {
+            ...day,
+            exercises: [],
+          });
+        }
+
+        const dayData = weekData.days.get(day.id);
+
+        // If there's an exercise, add it
+        if (programExercise) {
+          dayData.exercises.push({
+            id: programExercise.id,
+            dayId: programExercise.dayId,
+            exerciseId: programExercise.exerciseId,
+            order: programExercise.order,
+            sets: programExercise.sets,
+            reps: programExercise.reps,
+            intensity: programExercise.intensity,
+            notes: programExercise.notes,
+            exercise: exercise,
+          });
+        }
+      }
+    }
+
+    // Convert maps to arrays
+    return Array.from(weeksMap.values()).map(week => ({
+      ...week,
+      days: Array.from(week.days.values()),
+    }));
   }
 
   async getProgramWeek(id: string): Promise<ProgramWeek | undefined> {
@@ -775,7 +993,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteProgram(id: string): Promise<void> {
-    await db.delete(programs).where(eq(programs.id, id));
+    // CASCADE DELETE: Remove program and all its children in a transaction
+    await db.transaction(async (tx) => {
+      // Get all weeks for this program
+      const weeks = await tx
+        .select({ id: programWeeks.id })
+        .from(programWeeks)
+        .where(eq(programWeeks.programId, id));
+      
+      if (weeks.length > 0) {
+        const weekIds = weeks.map(w => w.id);
+        
+        // Get all days for these weeks
+        const days = await tx
+          .select({ id: programDays.id })
+          .from(programDays)
+          .where(inArray(programDays.weekId, weekIds));
+        
+        if (days.length > 0) {
+          const dayIds = days.map(d => d.id);
+          
+          // Delete exercises for these days
+          await tx.delete(programExercises).where(inArray(programExercises.dayId, dayIds));
+          
+          // Delete the days
+          await tx.delete(programDays).where(inArray(programDays.id, dayIds));
+        }
+        
+        // Delete the weeks
+        await tx.delete(programWeeks).where(inArray(programWeeks.id, weekIds));
+      }
+      
+      // Finally delete the program itself
+      await tx.delete(programs).where(eq(programs.id, id));
+    });
   }
 
   async deleteExercise(id: string): Promise<void> {
