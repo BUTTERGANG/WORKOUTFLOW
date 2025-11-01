@@ -26,7 +26,7 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Performance Optimizations** (Nov 2025):
   - Query optimization: Rewrote `getProgramWeeks()` using JOINs to reduce 73 queries → 1 query for 12-week programs
   - Transaction wrapping: `createCompleteProgram()` creates entire program structure atomically
-  - Cascade deletes: `deleteProgram()` removes all child records (weeks/days/exercises) in transaction
+  - Cascade deletes: Comprehensive cascade delete for programs, organizations, and teams
 - **Data Integrity Validation** (Nov 2025):
   - Prevents duplicate week numbers within programs
   - Prevents duplicate day numbers within weeks
@@ -34,6 +34,14 @@ The platform is built with a modern web stack, featuring a **React frontend with
   - Validates positive values for sets, week/day numbers, exercise orders
   - Validates day numbers are 1-7
   - Verifies exercise existence before program creation
+- **Cascade Delete Implementation** (Nov 2025):
+  - **Organization deletion**: Removes all teams, programs (with weeks/days/exercises), workout sessions (with exercise logs/set logs), team members, join requests, and program assignments atomically
+  - **Team deletion**: Removes all team members, join requests, and program assignments atomically
+  - **Program deletion**: Removes all weeks, days, exercises, and program assignments atomically
+  - All deletion operations wrapped in transactions to prevent orphaned data
+- **Error Handling Improvements** (Nov 2025):
+  - Enhanced JSON parsing in API client with descriptive error messages
+  - Prevents silent failures when server returns invalid JSON
 
 ### Feature Specifications
 - **Program Builder**: Allows coaches to create and assign detailed training programs.
