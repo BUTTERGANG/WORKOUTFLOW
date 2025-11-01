@@ -87,50 +87,47 @@ function Router() {
   }
 
   // Show authenticated app with sidebar
-  return (
-    <>
-      <AppSidebar />
-      <div className="flex flex-1 flex-col w-full">
-        <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border bg-background px-4">
-          <SidebarTrigger data-testid="button-sidebar-toggle" />
-        </header>
-        <main className="flex-1 overflow-auto">
-          <Switch>
-            <Route path="/" component={Dashboard} />
-            <Route path="/onboarding" component={Onboarding} />
-            <Route path="/join-team" component={JoinTeam} />
-            <Route path="/programs" component={Programs} />
-            <Route path="/workout" component={Workout} />
-            <Route path="/athletes" component={Athletes} />
-            <Route path="/progress" component={Progress} />
-            <Route path="/messages" component={Messages} />
-            <Route path="/settings" component={Settings} />
-            <Route component={NotFound} />
-          </Switch>
-        </main>
-      </div>
-    </>
-  );
-}
-
-export default function App() {
-  // Custom sidebar width for workout application
   const style = {
     "--sidebar-width": "16rem",       // 256px
     "--sidebar-width-icon": "3rem",   // 48px (default icon width)
   };
 
   return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <div className="flex flex-1 flex-col w-full">
+          <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border bg-background px-4">
+            <SidebarTrigger data-testid="button-sidebar-toggle" />
+          </header>
+          <main className="flex-1 overflow-auto">
+            <Switch>
+              <Route path="/" component={Dashboard} />
+              <Route path="/onboarding" component={Onboarding} />
+              <Route path="/join-team" component={JoinTeam} />
+              <Route path="/programs" component={Programs} />
+              <Route path="/workout" component={Workout} />
+              <Route path="/athletes" component={Athletes} />
+              <Route path="/progress" component={Progress} />
+              <Route path="/messages" component={Messages} />
+              <Route path="/settings" component={Settings} />
+              <Route component={NotFound} />
+            </Switch>
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+export default function App() {
+  return (
     <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider defaultTheme="dark">
           <TooltipProvider>
             <AppProvider>
-              <SidebarProvider style={style as React.CSSProperties}>
-                <div className="flex h-screen w-full">
-                  <Router />
-                </div>
-              </SidebarProvider>
+              <Router />
               <Toaster />
             </AppProvider>
           </TooltipProvider>

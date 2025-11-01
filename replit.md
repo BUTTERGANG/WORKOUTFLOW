@@ -48,6 +48,7 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Layout Fixes** (Nov 2025):
   - Fixed main content area to use `flex-1` and `overflow-auto` for proper flex layout with sidebar
   - Ensures sidebar and main content display side by side without clipping or off-center positioning
+  - Moved `SidebarProvider` to only wrap authenticated routes, allowing registration and landing pages to render centered without sidebar interference
 
 ### Feature Specifications
 - **Program Builder**: Allows coaches to create and assign detailed training programs.
