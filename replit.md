@@ -1,258 +1,43 @@
 # Workout Programming Platform
 
-A professional weightlifting team management platform built for strength and conditioning coaches and athletes.
-
 ## Overview
-
-This platform provides coaches with powerful tools to create training programs, track athlete progress, and manage teams. Athletes get a mobile-optimized workout logging experience with detailed performance tracking.
-
-## Features
-
-### For Coaches
-- **Program Builder**: Create detailed training programs organized by weeks, days, and exercises
-- **Exercise Library**: 100+ pre-loaded exercises with support for custom movements
-- **Team Management**: Organize athletes into teams with role-based access control
-- **Progress Analytics**: Track athlete performance with 1RM estimates and volume metrics
-- **Communication**: Direct messaging and workout-specific comments
-
-### For Athletes
-- **Workout Logging**: Mobile-optimized interface for logging sets, reps, weight, and RPE
-- **Rest Timer**: Built-in timer with notifications
-- **Plate Calculator**: Automatic barbell loading calculator
-- **Exercise History**: View previous performance during workouts
-- **Progress Tracking**: Visualize strength progression over time
-
-## Architecture
-
-### Tech Stack
-- **Frontend**: React with TypeScript, TailwindCSS, Shadcn UI
-- **Backend**: Express.js with TypeScript
-- **Database**: PostgreSQL with Drizzle ORM
-- **Authentication**: Replit Auth (supports Google, GitHub, email/password)
-
-### Design System
-- **Theme**: Dark mode with blue accents (Material Design 3)
-- **Typography**: Roboto (UI), Roboto Mono (data/numbers)
-- **Components**: Shadcn UI with custom styling
-- **Mobile-First**: Responsive design optimized for workout logging
-
-## Database Schema
-
-### Organization Hierarchy
-- Organizations → Teams → Athletes
-- Role-based access: Admin, Head Coach, Assistant Coach, Athlete
-
-### Program Structure
-- Programs → Weeks → Days → Exercises
-- Supports periodization phases (hypertrophy, strength, power, peaking, deload)
-
-### Workout Logging
-- Workout Sessions → Exercise Logs → Set Logs
-- Tracks weight, reps, RPE, completion status
-
-## Recent Changes
-
-- **2025-11-01**: Code Quality & Mobile UX Improvements ✅
-  - 🎯 **Performance**: Fixed cache invalidation to scope to affected nodes instead of full tree reload
-    - Mutations now invalidate `['/api/programs', programId, 'weeks']` instead of all programs
-    - Prevents scroll reset and unnecessary re-renders during edit/delete operations
-  - 📱 **Mobile UX**: Improved touch target sizes for better mobile experience
-    - Increased button sizes from 24px to 44px (h-11 w-11) on mobile devices
-    - Edit/delete buttons now meet accessibility standards for touch interfaces
-    - Responsive scaling: 44px on mobile → 32px on desktop
-  - 🔧 **Code Quality**: Standardized query layer to use default fetcher
-    - Removed redundant custom queryFn from program weeks query
-    - Consistent use of TanStack Query best practices
-  - ✅ **Complete CRUD**: Program exercise edit/delete fully functional
-    - Inline editing with save/cancel actions
-    - Delete with confirmation dialog
-    - Real-time UI updates with scoped cache invalidation
-  - 🔐 **Security**: Verified authorization on all endpoints
-    - DELETE/UPDATE restricted to program creator or organization owner
-    - Proper permission checks through entire entity hierarchy
-
-- **2025-10-31**: Authentication System Clarification ✅
-  - 🔐 **Authentication**: Using Replit Auth (OpenID Connect provider)
-    - Supports **SSO**: Google, GitHub, X (Twitter), Apple sign-in
-    - Supports **Email/Password**: Traditional email/password authentication
-    - All handled through OIDC flow - no manual password management needed
-  - 📝 **Registration Flow**:
-    - Users first authenticate via SSO or email/password (handled by Replit)
-    - After authentication, users complete intake form (firstName, lastName, email, userType)
-    - User profile stored in database with role (athlete/coach)
-    - Automatic redirect to dashboard after registration
-  - ✅ **Database Integration**:
-    - users.id is VARCHAR (matches OIDC subject claim format)
-    - upsertUser properly syncs OIDC claims with database
-    - Registration endpoint updates user profile after authentication
-  - 🔒 **Session Management**:
-    - PostgreSQL session storage (connect-pg-simple)
-    - Automatic token refresh with refresh_token
-    - Secure cookie settings (httpOnly, secure, 1-week TTL)
-
-- **2025-10-30**: Critical Auth & UX Fixes + Dark Mode + Habit Tracker ✅
-  - 🔒 **Critical Auth Fixes**:
-    - Fixed useAuth hook to handle 401 errors gracefully (returns null instead of crashing)
-    - Added loading spinner to prevent flash between Landing → Dashboard
-    - Implemented logout dropdown menu in sidebar with proper navigation
-    - Removed duplicate user state from AppContext (eliminated sync issues)
-  - 🎨 **Dark Mode Enabled**:
-    - Dark theme now default across entire app
-    - Blue/purple accent colors matching Material Design 3 spec
-    - Configured for mobile-first workout experience
-  - 📊 **Habit Tracker System**:
-    - Added habitTrackers and habitEntries tables
-    - Support for water intake, weight, body measurements
-    - Daily tracking with unique date constraints
-    - Ready for frontend implementation
-  - 🔧 **Program Builder Improvements**:
-    - Added unique constraint on (weekId, dayNumber) to prevent duplicate days
-    - Fixed query parameter bug in program listing
-    - Mobile-optimized UI with proper touch targets
-  
-- **2025-10-30**: Database Migration to NeonDB ✅
-  - 🗄️ **Database**: Migrated from local PostgreSQL to NeonDB (serverless)
-  - ✅ Schema successfully pushed to NeonDB
-  - ✅ Database seeded with 34 global exercises
-  - ✅ Application verified working with NeonDB connection
-  - 📝 Updated configuration:
-    - `server/db.ts` now uses `NEON_DATABASE` environment variable
-    - All database operations running on NeonDB infrastructure
-  
-- **2025-10-30**: Production-Ready Security & API Improvements ✅
-  - 🔒 **Security**: Implemented battle-tested `sanitize-html` library for stored XSS prevention
-    - Defense in depth: protects all API consumers (React, emails, logs, external clients)
-    - Strips dangerous HTML while preserving user's actual text content
-    - Supports safe rich text formatting where needed
-  - 🛠️ **Error Handling**: Centralized error handling system fully integrated
-    - Custom error classes (NotFoundError, UnauthorizedError, ForbiddenError, ValidationError, ConflictError)
-    - Zod validation error support with detailed messages
-    - Database error code handling (23505 unique constraint, 23503 foreign key, 23502 not null)
-  - ✅ **CRUD Operations**: Complete DELETE routes with authorization
-    - DELETE /api/organizations/:id (owner only)
-    - DELETE /api/teams/:id (owner/head coach)
-    - DELETE /api/teams/:teamId/members/:userId (coach roles)
-    - DELETE /api/programs/:id (creator only)
-    - DELETE /api/exercises/:id (creator only, custom exercises)
-    - DELETE /api/workout-sessions/:id (athlete/creator)
-  - ✅ **CRUD Operations**: Complete UPDATE routes with authorization
-    - PATCH /api/exercises/:id (creator only)
-    - PATCH /api/programs/:id (creator only)
-    - PATCH /api/program-exercises/:id (program creator)
-  - 📝 **Storage Layer**: Extended IStorage interface
-    - DELETE methods: deleteOrganization, deleteTeam, removeTeamMember, deleteProgram, deleteExercise, deleteWorkoutSession
-    - UPDATE methods: updateExercise, updateProgram, updateProgramExercise
-    - GET methods: getProgramExercise (additional to existing methods)
-  - 🔐 **Authorization**: Role-based access control on all endpoints
-  - ⚡ **Performance**: Rate limiting middleware for sensitive operations
-  - 📊 **Validation**: Input validation helpers (isValidEmail, isValidUrl, isValidUUID)
-  - **Status**: ✅ Architect-approved as production-ready
-  - Files Created:
-    - `server/errors.ts` - Comprehensive error utilities
-    - `server/middleware/sanitization.ts` - XSS protection with sanitize-html
-  - Files Updated:
-    - `server/index.ts` - Integrated sanitization middleware and error handler
-    - `server/storage.ts` - Complete CRUD interface and implementation
-    - `server/routes.ts` - Full DELETE/UPDATE API with authorization
-
-- **2025-10-28**: Critical ID Type Fix - Replit Auth Compatibility
-  - ⚠️ **CRITICAL**: Reverted users.id to `varchar` type (Replit Auth provides string IDs, not UUIDs)
-  - ✅ Updated all foreign keys referencing users.id to varchar (organizations.ownerId, teamMembers.userId, etc.)
-  - ✅ Database schema recreated with correct types - **users.id is VARCHAR, all other entities use UUID**
-  - ✅ PostgreSQL pgcrypto extension enabled for UUID generation compatibility
-  - ✅ Fixed TypeScript compilation errors (target ES2015, proper Express type augmentation)
-  - ✅ Enhanced seed script with progress logging - seeded 34 global exercises
-  - ✅ Backend compiles cleanly with no errors
-  - ✅ Authentication flow working correctly with Replit Auth
-  - ✅ Comprehensive authorization system with tenant isolation
-  - ✅ Database indexes on all foreign keys and query columns
-
-- **2025-10-28**: Initial MVP implementation
-  - Complete database schema with multi-tenant support
-  - Full authentication system with role-based access
-  - All frontend components built with dark theme
-  - Backend API for all core features
+This platform is a professional weightlifting team management system designed for strength and conditioning coaches and athletes. Its primary purpose is to empower coaches with robust tools for creating training programs, meticulously tracking athlete progress, and efficiently managing their teams. Athletes benefit from a mobile-optimized experience for logging workouts, complete with detailed performance tracking and insightful visualizations of their strength progression over time. The platform aims to streamline the coaching workflow and enhance the athlete's training experience.
 
 ## User Preferences
-
 *No specific preferences recorded yet.*
 
-## Development
+## System Architecture
+The platform is built with a modern web stack, featuring a **React frontend with TypeScript, TailwindCSS, and Shadcn UI**. The **backend is an Express.js application also written in TypeScript**. Data persistence is handled by **PostgreSQL, utilizing Drizzle ORM**. **Replit Auth** is used for authentication, supporting various SSO providers (Google, GitHub, X, Apple) and traditional email/password login.
 
-### Environment Setup
-- **Database**: NeonDB (serverless PostgreSQL)
-- **Connection**: Using `NEON_DATABASE` secret
-- Replit Auth configured
-- Session management with PostgreSQL storage
+### UI/UX Decisions
+- **Design System**: Follows Material Design 3 principles with a dark mode theme and blue accents.
+- **Typography**: Uses Roboto for general UI and Roboto Mono for data and numbers.
+- **Components**: Leverages Shadcn UI with custom styling for a consistent look and feel.
+- **Mobile-First**: Designed with a strong emphasis on responsive and mobile-optimized layouts, especially for the workout logging experience.
 
-### Available Scripts
-- `npm run dev` - Start development server (frontend + backend)
-- `npm run db:push` - Sync database schema with Drizzle
-- `tsx server/seed.ts` - Seed database with global exercises (run after fresh database setup)
+### Technical Implementations
+- **Organization Hierarchy**: Structures data around Organizations → Teams → Athletes, with role-based access control (Admin, Head Coach, Assistant Coach, Athlete).
+- **Program Structure**: Programs are organized hierarchically into Weeks → Days → Exercises, supporting various periodization phases.
+- **Workout Logging**: Tracks workout sessions, exercise logs, and set logs, including weight, reps, RPE, and completion status.
+- **Authentication**: Integrates Replit Auth for secure sign-in, with user profiles stored in the database post-authentication. User IDs are VARCHAR to align with Replit Auth's string-based IDs.
+- **Database Schema**: Utilizes UUIDs for most entity primary keys, with foreign keys referencing `users.id` as VARCHAR.
+- **Error Handling**: Centralized error handling system with custom error classes and Zod validation support.
+- **Security**: Implements `sanitize-html` for XSS prevention and role-based access control on all API endpoints.
 
-### Important Database Notes
-- **users.id is VARCHAR**: Replit Auth provides string-based user IDs (e.g., "2755323"), NOT UUIDs
-- All other entities use UUID primary keys with `.defaultRandom()`
-- Foreign keys referencing users.id must be VARCHAR type
-- Sessions table uses VARCHAR sid for session management
+### Feature Specifications
+- **Program Builder**: Allows coaches to create and assign detailed training programs.
+- **Exercise Library**: Includes a pre-loaded library with support for custom exercises.
+- **Team Management**: Tools for organizing athletes and managing team memberships.
+- **Progress Analytics**: Tracks athlete performance metrics like 1RM estimates and volume.
+- **Workout Logging**: Mobile-optimized interface for athletes to log sets, reps, and RPE.
+- **Tools for Athletes**: Includes a rest timer and plate calculator.
 
-### API Endpoints
-
-**Authentication**
-- `GET /api/auth/user` - Get current user
-- `GET /api/login` - Initiate login
-- `GET /api/logout` - Log out
-
-**Organizations & Teams**
-- `POST /api/organizations` - Create organization
-- `GET /api/organizations` - List user's organizations
-- `DELETE /api/organizations/:id` - Delete organization (owner only)
-- `POST /api/teams` - Create team
-- `GET /api/organizations/:orgId/teams` - List organization teams
-- `DELETE /api/teams/:id` - Delete team (owner/head coach)
-- `POST /api/teams/:teamId/members` - Add team member
-- `DELETE /api/teams/:teamId/members/:userId` - Remove team member
-
-**Programs**
-- `POST /api/programs` - Create program
-- `GET /api/programs` - List programs
-- `PATCH /api/programs/:id` - Update program
-- `DELETE /api/programs/:id` - Delete program
-- `POST /api/programs/:id/weeks` - Add week to program
-- `POST /api/weeks/:id/days` - Add day to week
-- `POST /api/days/:id/exercises` - Add exercise to day
-- `PATCH /api/program-exercises/:id` - Update program exercise
-
-**Workouts**
-- `POST /api/workout-sessions` - Create workout session
-- `GET /api/workout-sessions` - List athlete's workouts
-- `DELETE /api/workout-sessions/:id` - Delete workout session
-- `POST /api/workout-sessions/:id/exercise-logs` - Log exercise
-- `POST /api/exercise-logs/:id/sets` - Log set
-
-**Exercises**
-- `GET /api/exercises` - List exercises
-- `POST /api/exercises` - Create custom exercise
-- `PATCH /api/exercises/:id` - Update exercise
-- `DELETE /api/exercises/:id` - Delete exercise (custom only)
-
-**Messaging**
-- `POST /api/messages` - Send message
-- `GET /api/messages/conversation/:userId` - Get conversation
-
-## Project Status
-
-**Current Phase**: MVP Complete
-- ✅ Database schema designed and deployed
-- ✅ Authentication system implemented
-- ✅ All frontend components built
-- ✅ Backend API implemented
-- ✅ Exercise library seeded
-- 🔄 Ready for testing and validation
-
-**Next Steps**:
-1. Test core user journeys
-2. Add data seed for demo organizations/teams
-3. Implement program templates feature
-4. Add offline mode for workout logging
-5. Build analytics dashboard with charts
+## External Dependencies
+- **Database**: PostgreSQL (specifically NeonDB for serverless deployment).
+- **Authentication**: Replit Auth (for Google, GitHub, X, Apple SSO, and email/password).
+- **ORM**: Drizzle ORM (for database interaction).
+- **UI Components**: Shadcn UI.
+- **Styling**: TailwindCSS.
+- **Backend Framework**: Express.js.
+- **XSS Protection**: `sanitize-html` library.
+- **Session Management**: `connect-pg-simple` (for PostgreSQL session storage).
