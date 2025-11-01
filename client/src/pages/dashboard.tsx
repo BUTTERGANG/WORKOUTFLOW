@@ -42,12 +42,19 @@ export default function Dashboard() {
     }
   }, [organizations, orgsLoading, currentOrganization, setCurrentOrganization]);
 
-  // Redirect to onboarding if no organizations
+  // Redirect based on user role if no organizations
   useEffect(() => {
-    if (!orgsLoading && organizations && organizations.length === 0) {
-      setLocation("/onboarding");
+    if (!orgsLoading && organizations && organizations.length === 0 && user) {
+      // Athletes should join existing teams
+      if (user.role === 'athlete') {
+        setLocation("/join-team");
+      }
+      // Coaches should create organizations/teams
+      else if (user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach') {
+        setLocation("/onboarding");
+      }
     }
-  }, [organizations, orgsLoading, setLocation]);
+  }, [organizations, orgsLoading, setLocation, user]);
 
   if (isLoading) {
     return (

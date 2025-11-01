@@ -1201,9 +1201,12 @@ function AssignAthleteDialog({
           )}
 
           {availableAthletes.length === 0 && currentAssignments.length === 0 && (
-            <div className="text-center py-6 text-muted-foreground">
-              <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p className="text-sm">No athletes found in your organization</p>
+            <div className="text-center py-6 space-y-3">
+              <Users className="h-12 w-12 mx-auto mb-3 opacity-50 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium text-foreground mb-1">No athletes in your organization yet</p>
+                <p className="text-xs text-muted-foreground">Athletes need to search for your team by name and request to join</p>
+              </div>
             </div>
           )}
 
