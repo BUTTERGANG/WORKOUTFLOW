@@ -170,15 +170,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    // Build update data, only including defined values to avoid overwriting existing data
+    const updateData: Partial<UpsertUser> & { updatedAt: Date } = {
+      updatedAt: new Date(),
+    };
+    
+    // Only update fields that are actually provided (not undefined)
+    if (userData.email !== undefined) updateData.email = userData.email;
+    if (userData.firstName !== undefined) updateData.firstName = userData.firstName;
+    if (userData.lastName !== undefined) updateData.lastName = userData.lastName;
+    if (userData.profileImageUrl !== undefined) updateData.profileImageUrl = userData.profileImageUrl;
+    
     const [user] = await db
       .insert(users)
       .values(userData)
       .onConflictDoUpdate({
         target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
+        set: updateData,
       })
       .returning();
     return user;
@@ -999,11 +1007,6 @@ export class DatabaseStorage implements IStorage {
         await tx
           .delete(teamMembers)
           .where(inArray(teamMembers.teamId, teamIds));
-        
-        // Step 4: Delete all program assignments for teams in this organization
-        await tx
-          .delete(programAssignments)
-          .where(inArray(programAssignments.teamId, teamIds));
       }
       
       // Step 5: Get all programs in this organization
@@ -1128,12 +1131,9 @@ export class DatabaseStorage implements IStorage {
         .delete(teamMembers)
         .where(eq(teamMembers.teamId, id));
       
-      // Step 3: Delete all program assignments for this team
-      await tx
-        .delete(programAssignments)
-        .where(eq(programAssignments.teamId, id));
-      
-      // Step 4: Finally, delete the team itself
+      // Step 3: Finally, delete the team itself
+      // Note: We don't delete program assignments because they're tied to programs/athletes,
+      // not teams. Programs belong to organizations, not teams.
       await tx
         .delete(teams)
         .where(eq(teams.id, id));

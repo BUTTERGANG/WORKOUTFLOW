@@ -90,11 +90,11 @@ function Router() {
   return (
     <>
       <AppSidebar />
-      <div className="flex w-full flex-col">
+      <div className="flex flex-1 flex-col w-full">
         <header className="sticky top-0 z-50 flex h-14 items-center gap-4 border-b border-border bg-background px-4">
           <SidebarTrigger data-testid="button-sidebar-toggle" />
         </header>
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-auto">
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/onboarding" component={Onboarding} />
