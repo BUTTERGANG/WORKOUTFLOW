@@ -85,6 +85,8 @@ export interface IStorage {
   // Program assignment operations
   createProgramAssignment(assignment: InsertProgramAssignment): Promise<ProgramAssignment>;
   getAthleteAssignments(athleteId: string): Promise<ProgramAssignment[]>;
+  getProgramAssignments(programId: string): Promise<(ProgramAssignment & { athlete: User })[]>;
+  deleteProgramAssignment(id: string): Promise<void>;
   
   // Workout logging operations
   createWorkoutSession(session: InsertWorkoutSession): Promise<WorkoutSession>;
@@ -465,6 +467,28 @@ export class DatabaseStorage implements IStorage {
       .from(programAssignments)
       .where(eq(programAssignments.athleteId, athleteId))
       .orderBy(desc(programAssignments.assignedAt));
+  }
+
+  async getProgramAssignments(programId: string): Promise<(ProgramAssignment & { athlete: User })[]> {
+    return await db
+      .select({
+        id: programAssignments.id,
+        programId: programAssignments.programId,
+        athleteId: programAssignments.athleteId,
+        startDate: programAssignments.startDate,
+        status: programAssignments.status,
+        assignedBy: programAssignments.assignedBy,
+        assignedAt: programAssignments.assignedAt,
+        athlete: users,
+      })
+      .from(programAssignments)
+      .innerJoin(users, eq(programAssignments.athleteId, users.id))
+      .where(eq(programAssignments.programId, programId))
+      .orderBy(desc(programAssignments.assignedAt));
+  }
+
+  async deleteProgramAssignment(id: string): Promise<void> {
+    await db.delete(programAssignments).where(eq(programAssignments.id, id));
   }
 
   // ============================================
