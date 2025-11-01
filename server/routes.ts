@@ -701,6 +701,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/programs/:programId/assignments', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const program = await storage.getProgram(req.params.programId);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      // Verify user has access to this program
+      const hasAccess = await hasProgramAccess(req.currentUser.id, req.params.programId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Forbidden: program not in your organization" });
+      }
+
+      const assignments = await storage.getProgramAssignments(req.params.programId);
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error fetching program assignments:", error);
+      res.status(500).json({ message: "Failed to fetch program assignments" });
+    }
+  });
+
+  app.delete('/api/program-assignments/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Get the assignment to check permissions
+      const assignment = await db
+        .select()
+        .from(programAssignments)
+        .where(eq(programAssignments.id, req.params.id))
+        .limit(1);
+
+      if (!assignment || assignment.length === 0) {
+        return res.status(404).json({ message: "Assignment not found" });
+      }
+
+      const programAssignment = assignment[0];
+      const program = await storage.getProgram(programAssignment.programId);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      const org = await storage.getOrganization(program.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check permissions (org owner, program creator, or coach in organization)
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = program.createdBy === req.currentUser.id;
+      const isCoach = req.currentUser.role === 'admin' || 
+                     req.currentUser.role === 'head_coach' || 
+                     req.currentUser.role === 'assistant_coach';
+      const hasOrgAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
+
+      if (!isOwner && !isCreator && !(isCoach && hasOrgAccess)) {
+        return res.status(403).json({ message: "Forbidden: insufficient permissions to remove assignment" });
+      }
+
+      await storage.deleteProgramAssignment(req.params.id);
+      res.json({ success: true, message: "Assignment removed" });
+    } catch (error) {
+      console.error("Error deleting program assignment:", error);
+      res.status(500).json({ message: "Failed to delete program assignment" });
+    }
+  });
+
   // ============================================
   // WORKOUT LOGGING ROUTES
   // ============================================
