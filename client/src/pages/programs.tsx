@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, Calendar, Users, ChevronRight, Trash2, Pencil } from "lucide-react";
+import { Plus, FileText, Calendar, Users, ChevronRight, Trash2, Pencil, Check, ChevronsUpDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -19,14 +19,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import type { Program, ProgramWeek, ProgramDay, ProgramExercise, Exercise } from "@shared/schema";
 
 export default function Programs() {
@@ -478,7 +485,7 @@ function ProgramBuilderDialog({
                                     className="h-6 w-6"
                                     onClick={() => {
                                       setEditingDayId(day.id);
-                                      setEditDayName(day.name);
+                                      setEditDayName(day.name || "");
                                     }}
                                     data-testid={`button-edit-day-${day.id}`}
                                   >
@@ -590,12 +597,7 @@ function AddExerciseDialog({
   const [reps, setReps] = useState("5");
   const [intensity, setIntensity] = useState("");
   const [notes, setNotes] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-
-  // Filter exercises based on search
-  const filteredExercises = exercises.filter((ex) =>
-    ex.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [open, setOpen] = useState(false);
 
   const handleAdd = () => {
     if (!selectedExercise || !sets || !reps) return;
@@ -617,6 +619,8 @@ function AddExerciseDialog({
   };
 
   if (!day) return null;
+
+  const selectedExerciseName = exercises?.find(ex => ex.id === selectedExercise)?.name || "";
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
@@ -652,35 +656,57 @@ function AddExerciseDialog({
         <div className="flex-1 overflow-y-auto space-y-4 py-2">
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="exercise-search">Search Exercise</Label>
-              <Input
-                id="exercise-search"
-                placeholder="Search exercises..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                data-testid="input-exercise-search"
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="exercise">Select Exercise</Label>
-              <Select value={selectedExercise} onValueChange={setSelectedExercise}>
-                <SelectTrigger data-testid="select-exercise">
-                  <SelectValue placeholder="Choose an exercise..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {filteredExercises.length === 0 ? (
-                    <div className="p-2 text-sm text-muted-foreground text-center">
-                      No exercises found
-                    </div>
-                  ) : (
-                    filteredExercises.map((ex) => (
-                      <SelectItem key={ex.id} value={ex.id}>
-                        {ex.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+              <Label>Select Exercise</Label>
+              <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-full justify-between h-12 text-base sm:h-10 sm:text-sm"
+                    data-testid="button-exercise-search"
+                  >
+                    {selectedExerciseName || "Search and select exercise..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search exercises..." data-testid="input-exercise-search" />
+                    <CommandList>
+                      <CommandEmpty>No exercises found.</CommandEmpty>
+                      <CommandGroup>
+                        {exercises?.map((exercise) => (
+                          <CommandItem
+                            key={exercise.id}
+                            value={exercise.name}
+                            onSelect={() => {
+                              setSelectedExercise(exercise.id);
+                              setOpen(false);
+                            }}
+                            data-testid={`option-exercise-${exercise.id}`}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedExercise === exercise.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex flex-col">
+                              <span className="font-medium">{exercise.name}</span>
+                              {exercise.category && (
+                                <span className="text-xs text-muted-foreground">
+                                  {exercise.category}{exercise.muscleGroup && ` • ${exercise.muscleGroup}`}
+                                </span>
+                              )}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
