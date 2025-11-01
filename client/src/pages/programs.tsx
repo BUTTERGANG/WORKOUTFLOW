@@ -592,12 +592,40 @@ function AddExerciseDialog({
   onClose: () => void;
   onAdd: (data: { dayId: string; exerciseId: string; order: number; sets: number; reps: string; intensity?: string; notes?: string }) => void;
 }) {
+  const { toast } = useToast();
   const [selectedExercise, setSelectedExercise] = useState("");
   const [sets, setSets] = useState("3");
   const [reps, setReps] = useState("5");
   const [intensity, setIntensity] = useState("");
   const [notes, setNotes] = useState("");
   const [open, setOpen] = useState(false);
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+
+  const updateExerciseMutation = useMutation({
+    mutationFn: async (data: { id: string; sets?: number; reps?: string; intensity?: string; notes?: string }) => {
+      return await apiRequest(`/api/program-exercises/${data.id}`, {
+        method: "PATCH",
+        body: { sets: data.sets, reps: data.reps, intensity: data.intensity, notes: data.notes },
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      toast({ title: "Exercise updated successfully" });
+      setEditingExerciseId(null);
+    },
+  });
+
+  const deleteExerciseMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest(`/api/program-exercises/${id}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      toast({ title: "Exercise deleted successfully" });
+    },
+  });
 
   const handleAdd = () => {
     if (!selectedExercise || !sets || !reps) return;
@@ -618,9 +646,36 @@ function AddExerciseDialog({
     setNotes("");
   };
 
+  const handleEdit = (exercise: ProgramExercise & { exercise: Exercise }) => {
+    setEditingExerciseId(exercise.id);
+    setSets(exercise.sets?.toString() || "3");
+    setReps(exercise.reps || "5");
+    setIntensity(exercise.intensity || "");
+    setNotes(exercise.notes || "");
+  };
+
+  const handleUpdate = (exerciseId: string) => {
+    updateExerciseMutation.mutate({
+      id: exerciseId,
+      sets: parseInt(sets),
+      reps,
+      intensity: intensity || undefined,
+      notes: notes || undefined,
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingExerciseId(null);
+    setSets("3");
+    setReps("5");
+    setIntensity("");
+    setNotes("");
+  };
+
   if (!day) return null;
 
   const selectedExerciseName = exercises?.find(ex => ex.id === selectedExercise)?.name || "";
+  const editingExercise = day.exercises?.find(ex => ex.id === editingExerciseId);
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
@@ -634,19 +689,118 @@ function AddExerciseDialog({
         {day.exercises && day.exercises.length > 0 && (
           <div className="border rounded-md p-3 bg-muted/30">
             <h4 className="text-sm font-semibold mb-2">Current Exercises:</h4>
-            <ul className="space-y-1">
+            <ul className="space-y-2">
               {day.exercises
                 .sort((a, b) => a.order - b.order)
                 .map((ex, idx) => (
-                  <li key={ex.id} className="flex items-start gap-2 text-sm">
-                    <span className="text-muted-foreground">{idx + 1}.</span>
-                    <div className="flex-1">
-                      <span className="text-foreground">{ex.exercise.name}</span>
-                      <span className="text-muted-foreground ml-2">
-                        {ex.sets} × {ex.reps}
-                        {ex.intensity && ` @ ${ex.intensity}`}
-                      </span>
-                    </div>
+                  <li key={ex.id} className="border-b last:border-b-0 pb-2 last:pb-0">
+                    {editingExerciseId === ex.id ? (
+                      <div className="space-y-2">
+                        <div className="text-sm font-medium text-foreground">{ex.exercise.name}</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label htmlFor={`edit-sets-${ex.id}`} className="text-xs">Sets</Label>
+                            <Input
+                              id={`edit-sets-${ex.id}`}
+                              type="number"
+                              min="1"
+                              value={sets}
+                              onChange={(e) => setSets(e.target.value)}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`edit-reps-${ex.id}`} className="text-xs">Reps</Label>
+                            <Input
+                              id={`edit-reps-${ex.id}`}
+                              value={reps}
+                              onChange={(e) => setReps(e.target.value)}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <Label htmlFor={`edit-intensity-${ex.id}`} className="text-xs">Intensity</Label>
+                          <Input
+                            id={`edit-intensity-${ex.id}`}
+                            value={intensity}
+                            onChange={(e) => setIntensity(e.target.value)}
+                            placeholder="e.g., 75%, RPE 8"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor={`edit-notes-${ex.id}`} className="text-xs">Notes</Label>
+                          <Textarea
+                            id={`edit-notes-${ex.id}`}
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            placeholder="Special instructions..."
+                            className="min-h-[60px] text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleUpdate(ex.id)}
+                            disabled={updateExerciseMutation.isPending}
+                            data-testid={`button-save-exercise-${ex.id}`}
+                          >
+                            {updateExerciseMutation.isPending ? "Saving..." : "Save"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleCancelEdit}
+                            data-testid={`button-cancel-edit-${ex.id}`}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start gap-2 text-sm">
+                        <span className="text-muted-foreground">{idx + 1}.</span>
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <span className="text-foreground font-medium">{ex.exercise.name}</span>
+                              <span className="text-muted-foreground ml-2">
+                                {ex.sets} × {ex.reps}
+                                {ex.intensity && ` @ ${ex.intensity}`}
+                              </span>
+                              {ex.notes && (
+                                <div className="text-xs text-muted-foreground mt-1">{ex.notes}</div>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6"
+                                onClick={() => handleEdit(ex)}
+                                data-testid={`button-edit-exercise-${ex.id}`}
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  if (confirm(`Delete "${ex.exercise.name}"?`)) {
+                                    deleteExerciseMutation.mutate(ex.id);
+                                  }
+                                }}
+                                data-testid={`button-delete-exercise-${ex.id}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </li>
                 ))}
             </ul>

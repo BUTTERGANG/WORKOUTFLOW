@@ -1340,6 +1340,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete program exercise
+  app.delete('/api/program-exercises/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const programExercise = await storage.getProgramExercise(req.params.id);
+      if (!programExercise) {
+        return res.status(404).json({ message: "Program exercise not found" });
+      }
+
+      // Get day -> week -> program to check permissions
+      const day = await storage.getProgramDay(programExercise.dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+
+      const week = await storage.getProgramWeek(day.weekId);
+      if (!week) {
+        return res.status(404).json({ message: "Week not found" });
+      }
+
+      const program = await storage.getProgram(week.programId);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      // Check permissions
+      const org = await storage.getOrganization(program.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = program.createdBy === req.currentUser.id;
+
+      if (!isOwner && !isCreator) {
+        return res.status(403).json({ message: "Forbidden: only program creator or org owner can delete" });
+      }
+
+      await storage.deleteProgramExercise(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting program exercise:", error);
+      res.status(500).json({ message: "Failed to delete program exercise" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

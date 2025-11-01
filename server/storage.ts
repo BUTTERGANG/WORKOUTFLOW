@@ -110,6 +110,7 @@ export interface IStorage {
   deleteWorkoutSession(id: string): Promise<void>;
   deleteExerciseLog(id: string): Promise<void>;
   deleteSetLog(id: string): Promise<void>;
+  deleteProgramExercise(id: string): Promise<void>;
   
   // UPDATE operations
   updateExercise(id: string, data: Partial<Exercise>): Promise<Exercise | undefined>;
@@ -611,6 +612,10 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSetLog(id: string): Promise<void> {
     await db.delete(setLogs).where(eq(setLogs.id, id));
+  }
+
+  async deleteProgramExercise(id: string): Promise<void> {
+    await db.delete(programExercises).where(eq(programExercises.id, id));
   }
 
   // ============================================
