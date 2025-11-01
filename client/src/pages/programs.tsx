@@ -350,11 +350,6 @@ function ProgramBuilderDialog({
   const { data: programWeeks, isLoading: weeksLoading } = useQuery<(ProgramWeek & { days: (ProgramDay & { exercises: (ProgramExercise & { exercise: Exercise })[] })[] })[]>({
     queryKey: ['/api/programs', program?.id, 'weeks'],
     enabled: !!program && open,
-    queryFn: async () => {
-      const res = await fetch(`/api/programs/${program!.id}/weeks`);
-      if (!res.ok) throw new Error('Failed to fetch weeks');
-      return res.json();
-    },
   });
 
   const addDayMutation = useMutation({
@@ -482,14 +477,14 @@ function ProgramBuilderDialog({
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-6 w-6"
+                                    className="h-11 w-11 sm:h-8 sm:w-8"
                                     onClick={() => {
                                       setEditingDayId(day.id);
                                       setEditDayName(day.name || "");
                                     }}
                                     data-testid={`button-edit-day-${day.id}`}
                                   >
-                                    <Pencil className="h-3 w-3" />
+                                    <Pencil className="h-4 w-4" />
                                   </Button>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
@@ -571,6 +566,7 @@ function ProgramBuilderDialog({
           <AddExerciseDialog
             day={allDays.find((d) => d.id === selectedDayId)!}
             exercises={exercises}
+            programId={program.id}
             onClose={() => setSelectedDayId(null)}
             onAdd={(data) => addExerciseMutation.mutate(data)}
           />
@@ -584,11 +580,13 @@ function ProgramBuilderDialog({
 function AddExerciseDialog({
   day,
   exercises,
+  programId,
   onClose,
   onAdd,
 }: {
   day: ProgramDay & { exercises: (ProgramExercise & { exercise: Exercise })[] };
   exercises: Exercise[];
+  programId: string;
   onClose: () => void;
   onAdd: (data: { dayId: string; exerciseId: string; order: number; sets: number; reps: string; intensity?: string; notes?: string }) => void;
 }) {
@@ -609,7 +607,7 @@ function AddExerciseDialog({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', programId, 'weeks'] });
       toast({ title: "Exercise updated successfully" });
       setEditingExerciseId(null);
     },
@@ -622,7 +620,7 @@ function AddExerciseDialog({
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', programId, 'weeks'] });
       toast({ title: "Exercise deleted successfully" });
     },
   });
@@ -777,16 +775,16 @@ function AddExerciseDialog({
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-6 w-6"
+                                className="h-11 w-11 sm:h-8 sm:w-8"
                                 onClick={() => handleEdit(ex)}
                                 data-testid={`button-edit-exercise-${ex.id}`}
                               >
-                                <Pencil className="h-3 w-3" />
+                                <Pencil className="h-4 w-4" />
                               </Button>
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-6 w-6 text-destructive hover:text-destructive"
+                                className="h-11 w-11 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
                                 onClick={() => {
                                   if (confirm(`Delete "${ex.exercise.name}"?`)) {
                                     deleteExerciseMutation.mutate(ex.id);
@@ -794,7 +792,7 @@ function AddExerciseDialog({
                                 }}
                                 data-testid={`button-delete-exercise-${ex.id}`}
                               >
-                                <Trash2 className="h-3 w-3" />
+                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </div>
                           </div>
