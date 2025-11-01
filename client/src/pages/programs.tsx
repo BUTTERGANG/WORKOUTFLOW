@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, FileText, Calendar, Users, ChevronRight, Trash2, Pencil, Check, ChevronsUpDown } from "lucide-react";
+import { Plus, FileText, Calendar, Users, ChevronRight, Trash2, Pencil, Check, ChevronsUpDown, UserPlus, X } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -34,7 +34,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { Program, ProgramWeek, ProgramDay, ProgramExercise, Exercise } from "@shared/schema";
+import type { Program, ProgramWeek, ProgramDay, ProgramExercise, Exercise, ProgramAssignment, User } from "@shared/schema";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Programs() {
   const { toast } = useToast();
@@ -279,40 +280,14 @@ export default function Programs() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {programs.map((program) => (
-              <Card
+              <ProgramCard
                 key={program.id}
-                className="hover-elevate active-elevate-2 cursor-pointer"
-                onClick={() => {
+                program={program}
+                onView={() => {
                   setSelectedProgram(program);
                   setBuildDialogOpen(true);
                 }}
-                data-testid={`card-program-${program.id}`}
-              >
-                <CardHeader className="pb-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <CardTitle className="text-lg sm:text-base truncate">{program.name}</CardTitle>
-                      {program.description && (
-                        <CardDescription className="mt-2 line-clamp-2 text-sm">
-                          {program.description}
-                        </CardDescription>
-                      )}
-                    </div>
-                    <ChevronRight className="h-6 w-6 flex-shrink-0 text-muted-foreground sm:h-5 sm:w-5" />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary" className="gap-1 h-7 px-3 text-sm">
-                      <Calendar className="h-4 w-4" />
-                      {program.durationWeeks} weeks
-                    </Badge>
-                    {program.phase && (
-                      <Badge variant="outline" className="h-7 px-3 text-sm">{program.phase}</Badge>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+              />
             ))}
           </div>
         )}
@@ -918,6 +893,330 @@ function AddExerciseDialog({
           >
             <Plus className="h-4 w-4 mr-1" />
             Add Exercise
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// Program Card Component with Assignment Feature
+function ProgramCard({ program, onView }: { program: Program; onView: () => void }) {
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  
+  // Fetch program assignments
+  const { data: assignments } = useQuery<(ProgramAssignment & { athlete: User })[]>({
+    queryKey: ['/api/programs', program.id, 'assignments'],
+  });
+
+  const assignedCount = assignments?.length || 0;
+
+  return (
+    <Card className="hover-elevate active-elevate-2" data-testid={`card-program-${program.id}`}>
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={onView}>
+            <CardTitle className="text-lg sm:text-base truncate">{program.name}</CardTitle>
+            {program.description && (
+              <CardDescription className="mt-2 line-clamp-2 text-sm">
+                {program.description}
+              </CardDescription>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="secondary" className="gap-1 h-7 px-3 text-sm">
+            <Calendar className="h-4 w-4" />
+            {program.durationWeeks} weeks
+          </Badge>
+          {program.phase && (
+            <Badge variant="outline" className="h-7 px-3 text-sm">{program.phase}</Badge>
+          )}
+          {assignedCount > 0 && (
+            <Badge variant="default" className="gap-1 h-7 px-3 text-sm">
+              <Users className="h-4 w-4" />
+              {assignedCount} athlete{assignedCount !== 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
+
+        {/* Assigned Athletes */}
+        {assignments && assignments.length > 0 && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex -space-x-2">
+              {assignments.slice(0, 3).map((assignment) => (
+                <Avatar key={assignment.id} className="h-8 w-8 border-2 border-background">
+                  <AvatarImage src={assignment.athlete.profileImageUrl || undefined} />
+                  <AvatarFallback className="text-xs">
+                    {assignment.athlete.firstName?.[0]}{assignment.athlete.lastName?.[0]}
+                  </AvatarFallback>
+                </Avatar>
+              ))}
+            </div>
+            {assignments.length > 3 && (
+              <span className="text-xs text-muted-foreground">
+                +{assignments.length - 3} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Assign Button */}
+        <Button
+          variant="outline"
+          className="w-full gap-2"
+          onClick={(e) => {
+            e.stopPropagation();
+            setAssignDialogOpen(true);
+          }}
+          data-testid={`button-assign-athletes-${program.id}`}
+        >
+          <UserPlus className="h-4 w-4" />
+          {assignedCount > 0 ? 'Manage Athletes' : 'Assign Athletes'}
+        </Button>
+      </CardContent>
+
+      <AssignAthleteDialog
+        program={program}
+        open={assignDialogOpen}
+        onOpenChange={setAssignDialogOpen}
+        currentAssignments={assignments || []}
+      />
+    </Card>
+  );
+}
+
+// Assign Athlete Dialog Component
+function AssignAthleteDialog({
+  program,
+  open,
+  onOpenChange,
+  currentAssignments,
+}: {
+  program: Program;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  currentAssignments: (ProgramAssignment & { athlete: User })[];
+}) {
+  const { toast } = useToast();
+  const { currentOrganization } = useApp();
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string>("");
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Fetch organization teams to get athletes
+  const { data: teams } = useQuery<any[]>({
+    queryKey: ['/api/organizations', currentOrganization?.id, 'teams'],
+    enabled: !!currentOrganization && open,
+  });
+
+  // Get all unique athletes from teams
+  const allAthletes = teams?.flatMap((team: any) => 
+    team.members?.filter((m: any) => m.user.role === 'athlete').map((m: any) => m.user) || []
+  ).reduce((unique: User[], athlete: User) => {
+    if (!unique.find(u => u.id === athlete.id)) {
+      unique.push(athlete);
+    }
+    return unique;
+  }, []) || [];
+
+  // Filter out already assigned athletes
+  const availableAthletes = allAthletes.filter(
+    (athlete: User) => !currentAssignments.find((a) => a.athleteId === athlete.id)
+  );
+
+  const assignMutation = useMutation({
+    mutationFn: async (data: { programId: string; athleteId: string; startDate: string }) => {
+      return await apiRequest<ProgramAssignment>('/api/program-assignments', {
+        method: 'POST',
+        body: data,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', program.id, 'assignments'] });
+      toast({ title: "Success", description: "Athlete assigned to program" });
+      setSelectedAthleteId("");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to assign athlete", variant: "destructive" });
+    },
+  });
+
+  const removeAssignmentMutation = useMutation({
+    mutationFn: async (assignmentId: string) => {
+      return await apiRequest(`/api/program-assignments/${assignmentId}`, {
+        method: 'DELETE',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', program.id, 'assignments'] });
+      toast({ title: "Success", description: "Athlete removed from program" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to remove athlete", variant: "destructive" });
+    },
+  });
+
+  const handleAssign = () => {
+    if (!selectedAthleteId || !startDate) return;
+    assignMutation.mutate({
+      programId: program.id,
+      athleteId: selectedAthleteId,
+      startDate: new Date(startDate).toISOString(),
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle>Manage Program Assignments</DialogTitle>
+          <DialogDescription>
+            Assign athletes to "{program.name}"
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          {/* Currently Assigned Athletes */}
+          {currentAssignments.length > 0 && (
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Assigned Athletes ({currentAssignments.length})</Label>
+              <div className="space-y-2">
+                {currentAssignments.map((assignment) => (
+                  <div
+                    key={assignment.id}
+                    className="flex items-center justify-between gap-3 rounded-md border p-3"
+                    data-testid={`assigned-athlete-${assignment.athleteId}`}
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={assignment.athlete.profileImageUrl || undefined} />
+                        <AvatarFallback>
+                          {assignment.athlete.firstName?.[0]}{assignment.athlete.lastName?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {assignment.athlete.firstName} {assignment.athlete.lastName}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Started: {new Date(assignment.startDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-destructive hover:text-destructive"
+                      onClick={() => removeAssignmentMutation.mutate(assignment.id)}
+                      data-testid={`button-remove-assignment-${assignment.id}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Assign New Athlete */}
+          {availableAthletes.length > 0 && (
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Assign New Athlete</Label>
+              <div className="space-y-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="athlete">Select Athlete</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className="w-full justify-between"
+                        data-testid="button-select-athlete"
+                      >
+                        {selectedAthleteId
+                          ? `${availableAthletes.find((a: User) => a.id === selectedAthleteId)?.firstName} ${availableAthletes.find((a: User) => a.id === selectedAthleteId)?.lastName}`
+                          : "Select athlete..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                      <Command>
+                        <CommandInput placeholder="Search athletes..." />
+                        <CommandList>
+                          <CommandEmpty>No athletes found.</CommandEmpty>
+                          <CommandGroup>
+                            {availableAthletes.map((athlete: User) => (
+                              <CommandItem
+                                key={athlete.id}
+                                value={`${athlete.firstName} ${athlete.lastName}`}
+                                onSelect={() => setSelectedAthleteId(athlete.id)}
+                                data-testid={`option-athlete-${athlete.id}`}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    selectedAthleteId === athlete.id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarImage src={athlete.profileImageUrl || undefined} />
+                                    <AvatarFallback className="text-xs">
+                                      {athlete.firstName?.[0]}{athlete.lastName?.[0]}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <span>{athlete.firstName} {athlete.lastName}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="startDate">Start Date</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    data-testid="input-start-date"
+                  />
+                </div>
+                <Button
+                  onClick={handleAssign}
+                  disabled={!selectedAthleteId || assignMutation.isPending}
+                  className="w-full"
+                  data-testid="button-submit-assignment"
+                >
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  {assignMutation.isPending ? 'Assigning...' : 'Assign to Program'}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {availableAthletes.length === 0 && currentAssignments.length === 0 && (
+            <div className="text-center py-6 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
+              <p className="text-sm">No athletes found in your organization</p>
+            </div>
+          )}
+
+          {availableAthletes.length === 0 && currentAssignments.length > 0 && (
+            <div className="text-center py-4 text-muted-foreground text-sm">
+              All athletes have been assigned to this program
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-close-assign-dialog">
+            Close
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,6 +1,8 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { 
   requireRole, 
@@ -25,6 +27,7 @@ import {
   insertExerciseLogSchema,
   insertSetLogSchema,
   insertMessageSchema,
+  programAssignments,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -192,7 +195,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/organizations/:orgId/teams', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
     try {
       const teams = await storage.getOrganizationTeams(req.params.orgId);
-      res.json(teams);
+      
+      // Fetch members for each team
+      const teamsWithMembers = await Promise.all(
+        teams.map(async (team) => {
+          const members = await storage.getTeamMembers(team.id);
+          return { ...team, members };
+        })
+      );
+      
+      res.json(teamsWithMembers);
     } catch (error) {
       console.error("Error fetching teams:", error);
       res.status(500).json({ message: "Failed to fetch teams" });
