@@ -11,6 +11,7 @@ import {
   verifyProgramAccess,
   hasOrganizationAccess,
   hasProgramAccess,
+  hasTeamAccess,
   type AuthRequest,
 } from "./middleware/authorization";
 import {
@@ -28,6 +29,7 @@ import {
   insertSetLogSchema,
   insertMessageSchema,
   programAssignments,
+  teamJoinRequests,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -253,6 +255,223 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching team members:", error);
       res.status(500).json({ message: "Failed to fetch team members" });
+    }
+  });
+
+  // ============================================
+  // TEAM JOIN REQUEST ROUTES
+  // ============================================
+
+  // Search for teams
+  app.get('/api/teams/search', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const searchTerm = req.query.q as string;
+      if (!searchTerm || searchTerm.trim().length < 2) {
+        return res.status(400).json({ message: "Search term must be at least 2 characters" });
+      }
+
+      const teams = await storage.searchTeams(searchTerm);
+      res.json(teams);
+    } catch (error) {
+      console.error("Error searching teams:", error);
+      res.status(500).json({ message: "Failed to search teams" });
+    }
+  });
+
+  // Create a join request
+  app.post('/api/team-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Verify the team exists
+      const team = await storage.getTeam(req.body.teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      // Check if user is already a member
+      const members = await storage.getTeamMembers(req.body.teamId);
+      const isMember = members.some(m => m.userId === req.currentUser!.id);
+      if (isMember) {
+        return res.status(400).json({ message: "You are already a member of this team" });
+      }
+
+      const data = {
+        teamId: req.body.teamId,
+        userId: req.currentUser.id,
+        message: req.body.message || null,
+        status: 'pending' as const,
+      };
+
+      const request = await storage.createTeamJoinRequest(data);
+      res.json(request);
+    } catch (error) {
+      console.error("Error creating join request:", error);
+      res.status(400).json({ message: "Failed to create join request" });
+    }
+  });
+
+  // Get join requests for a team (coaches only)
+  app.get('/api/teams/:teamId/join-requests', isAuthenticated, verifyTeamAccess, async (req: AuthRequest, res) => {
+    try {
+      const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
+      const requests = await storage.getTeamJoinRequests(req.params.teamId, status);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching join requests:", error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  // Get join requests for current user
+  app.get('/api/my-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
+      const requests = await storage.getUserJoinRequests(req.currentUser.id, status);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching user join requests:", error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  // Get join requests for an organization (coaches/admins only)
+  app.get('/api/organizations/:orgId/join-requests', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
+    try {
+      const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
+      const requests = await storage.getOrganizationJoinRequests(req.params.orgId, status);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching organization join requests:", error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  // Approve a join request
+  app.post('/api/team-join-requests/:id/approve', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Get the join request
+      const [request] = await db
+        .select()
+        .from(teamJoinRequests)
+        .where(eq(teamJoinRequests.id, req.params.id));
+
+      if (!request) {
+        return res.status(404).json({ message: "Join request not found" });
+      }
+
+      // Verify user has access to this team
+      const team = await storage.getTeam(request.teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const userHasTeamAccess = await hasTeamAccess(req.currentUser.id, request.teamId);
+      if (!userHasTeamAccess) {
+        return res.status(403).json({ message: "Forbidden: you don't have access to this team" });
+      }
+
+      // Verify user is a coach
+      const isCoach = req.currentUser.role === 'admin' || 
+                     req.currentUser.role === 'head_coach' || 
+                     req.currentUser.role === 'assistant_coach';
+      if (!isCoach) {
+        return res.status(403).json({ message: "Forbidden: only coaches can approve join requests" });
+      }
+
+      await storage.approveJoinRequest(req.params.id, req.currentUser.id);
+      res.json({ success: true, message: "Join request approved" });
+    } catch (error) {
+      console.error("Error approving join request:", error);
+      res.status(500).json({ message: "Failed to approve join request" });
+    }
+  });
+
+  // Reject a join request
+  app.post('/api/team-join-requests/:id/reject', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Get the join request
+      const [request] = await db
+        .select()
+        .from(teamJoinRequests)
+        .where(eq(teamJoinRequests.id, req.params.id));
+
+      if (!request) {
+        return res.status(404).json({ message: "Join request not found" });
+      }
+
+      // Verify user has access to this team
+      const team = await storage.getTeam(request.teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      const userHasTeamAccess = await hasTeamAccess(req.currentUser.id, request.teamId);
+      if (!userHasTeamAccess) {
+        return res.status(403).json({ message: "Forbidden: you don't have access to this team" });
+      }
+
+      // Verify user is a coach
+      const isCoach = req.currentUser.role === 'admin' || 
+                     req.currentUser.role === 'head_coach' || 
+                     req.currentUser.role === 'assistant_coach';
+      if (!isCoach) {
+        return res.status(403).json({ message: "Forbidden: only coaches can reject join requests" });
+      }
+
+      await storage.rejectJoinRequest(req.params.id, req.currentUser.id);
+      res.json({ success: true, message: "Join request rejected" });
+    } catch (error) {
+      console.error("Error rejecting join request:", error);
+      res.status(500).json({ message: "Failed to reject join request" });
+    }
+  });
+
+  // Delete a join request (only by the requester)
+  app.delete('/api/team-join-requests/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Get the join request
+      const [request] = await db
+        .select()
+        .from(teamJoinRequests)
+        .where(eq(teamJoinRequests.id, req.params.id));
+
+      if (!request) {
+        return res.status(404).json({ message: "Join request not found" });
+      }
+
+      // Only the requester can delete their own request
+      if (request.userId !== req.currentUser.id) {
+        return res.status(403).json({ message: "Forbidden: you can only delete your own join requests" });
+      }
+
+      await storage.deleteJoinRequest(req.params.id);
+      res.json({ success: true, message: "Join request deleted" });
+    } catch (error) {
+      console.error("Error deleting join request:", error);
+      res.status(500).json({ message: "Failed to delete join request" });
     }
   });
 

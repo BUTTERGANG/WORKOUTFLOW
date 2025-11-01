@@ -24,6 +24,7 @@ import { z } from "zod";
 export const userRoleEnum = pgEnum('user_role', ['admin', 'head_coach', 'assistant_coach', 'athlete']);
 export const programPhaseEnum = pgEnum('program_phase', ['hypertrophy', 'strength', 'power', 'peaking', 'deload']);
 export const workoutStatusEnum = pgEnum('workout_status', ['scheduled', 'in_progress', 'completed', 'skipped']);
+export const joinRequestStatusEnum = pgEnum('join_request_status', ['pending', 'approved', 'rejected']);
 
 // ============================================
 // SESSION & AUTH TABLES (Required for Replit Auth)
@@ -91,6 +92,23 @@ export const teamMembers = pgTable("team_members", {
 }, (table) => [
   index("idx_team_members_team_id").on(table.teamId),
   index("idx_team_members_user_id").on(table.userId),
+]);
+
+// Team join requests (for athletes to request to join teams)
+export const teamJoinRequests = pgTable("team_join_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  teamId: uuid("team_id").notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: joinRequestStatusEnum("status").notNull().default('pending'),
+  message: text("message"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: 'set null' }),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_team_join_requests_team_id").on(table.teamId),
+  index("idx_team_join_requests_user_id").on(table.userId),
+  index("idx_team_join_requests_status").on(table.status),
+  unique("unique_pending_request").on(table.teamId, table.userId, table.status),
 ]);
 
 // ============================================
@@ -457,6 +475,13 @@ export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
   joinedAt: true,
 });
 
+export const insertTeamJoinRequestSchema = createInsertSchema(teamJoinRequests).omit({
+  id: true,
+  createdAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+});
+
 export const insertExerciseSchema = createInsertSchema(exercises).omit({
   id: true,
   createdAt: true,
@@ -516,6 +541,9 @@ export type InsertTeam = z.infer<typeof insertTeamSchema>;
 
 export type TeamMember = typeof teamMembers.$inferSelect;
 export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
+
+export type TeamJoinRequest = typeof teamJoinRequests.$inferSelect;
+export type InsertTeamJoinRequest = z.infer<typeof insertTeamJoinRequestSchema>;
 
 export type Exercise = typeof exercises.$inferSelect;
 export type InsertExercise = z.infer<typeof insertExerciseSchema>;

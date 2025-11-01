@@ -7,7 +7,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { UserPlus, Users, Search, Mail, Calendar, Target } from "lucide-react";
+import { UserPlus, Users, Search, Mail, Calendar, Target, UserCheck, UserX, Clock } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -27,7 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { User, TeamMember, Program, ProgramAssignment } from "@shared/schema";
+import type { User, TeamMember, Program, ProgramAssignment, TeamJoinRequest } from "@shared/schema";
+
+type JoinRequest = TeamJoinRequest & {
+  user: User;
+  team: { name: string; organizationId: string };
+};
 
 export default function Athletes() {
   const { toast } = useToast();
@@ -65,6 +70,17 @@ export default function Athletes() {
     queryFn: async () => {
       const res = await fetch(`/api/program-assignments?teamId=${currentTeam!.id}`);
       if (!res.ok) throw new Error('Failed to fetch assignments');
+      return res.json();
+    },
+  });
+
+  // Fetch pending join requests for current team
+  const { data: joinRequests } = useQuery<JoinRequest[]>({
+    queryKey: ['/api/teams', currentTeam?.id, 'join-requests'],
+    enabled: !!currentTeam,
+    queryFn: async () => {
+      const res = await fetch(`/api/teams/${currentTeam!.id}/join-requests?status=pending`);
+      if (!res.ok) throw new Error('Failed to fetch join requests');
       return res.json();
     },
   });
@@ -116,6 +132,52 @@ export default function Athletes() {
       toast({
         title: "Error",
         description: error?.message || "Failed to assign program",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Approve join request mutation
+  const approveJoinRequestMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      return await apiRequest(`/api/team-join-requests/${requestId}/approve`, {
+        method: "POST",
+      });
+    },
+    onSuccess: () => {
+      if (currentTeam) {
+        queryClient.invalidateQueries({ queryKey: ['/api/teams', currentTeam.id, 'join-requests'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/teams', currentTeam.id, 'members'] });
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/teams'] });
+      toast({ title: "Success", description: "Join request approved" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to approve request",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Reject join request mutation
+  const rejectJoinRequestMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      return await apiRequest(`/api/team-join-requests/${requestId}/reject`, {
+        method: "POST",
+      });
+    },
+    onSuccess: () => {
+      if (currentTeam) {
+        queryClient.invalidateQueries({ queryKey: ['/api/teams', currentTeam.id, 'join-requests'] });
+      }
+      toast({ title: "Success", description: "Join request rejected" });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error?.message || "Failed to reject request",
         variant: "destructive",
       });
     },
@@ -278,6 +340,78 @@ export default function Athletes() {
             />
           </div>
         </div>
+
+        {/* Pending Join Requests */}
+        {joinRequests && joinRequests.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Clock className="h-5 w-5 text-primary" />
+                <CardTitle>Pending Join Requests</CardTitle>
+              </div>
+              <CardDescription>
+                Review and respond to athlete requests to join your team
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {joinRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
+                    data-testid={`join-request-${request.id}`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Avatar className="h-10 w-10">
+                        <AvatarImage src={request.user.profileImageUrl || undefined} />
+                        <AvatarFallback>
+                          {request.user.firstName?.[0]}{request.user.lastName?.[0]}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-foreground">
+                          {request.user.firstName} {request.user.lastName}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{request.user.email}</p>
+                        {request.message && (
+                          <p className="mt-2 text-sm text-foreground italic">
+                            "{request.message}"
+                          </p>
+                        )}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Requested {new Date(request.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => approveJoinRequestMutation.mutate(request.id)}
+                        disabled={approveJoinRequestMutation.isPending || rejectJoinRequestMutation.isPending}
+                        data-testid={`button-approve-${request.id}`}
+                        className="gap-1"
+                      >
+                        <UserCheck className="h-4 w-4" />
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => rejectJoinRequestMutation.mutate(request.id)}
+                        disabled={approveJoinRequestMutation.isPending || rejectJoinRequestMutation.isPending}
+                        data-testid={`button-reject-${request.id}`}
+                        className="gap-1"
+                      >
+                        <UserX className="h-4 w-4" />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Athletes Grid */}
         {!teamMembers || teamMembers.length === 0 ? (

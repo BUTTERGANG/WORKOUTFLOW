@@ -3,6 +3,7 @@ import {
   organizations,
   teams,
   teamMembers,
+  teamJoinRequests,
   exercises,
   programs,
   programWeeks,
@@ -21,6 +22,8 @@ import {
   type InsertTeam,
   type TeamMember,
   type InsertTeamMember,
+  type TeamJoinRequest,
+  type InsertTeamJoinRequest,
   type Exercise,
   type InsertExercise,
   type Program,
@@ -65,6 +68,16 @@ export interface IStorage {
   getOrganizationTeams(organizationId: string): Promise<Team[]>;
   addTeamMember(member: InsertTeamMember): Promise<TeamMember>;
   getTeamMembers(teamId: string): Promise<(TeamMember & { user: User })[]>;
+  searchTeams(searchTerm: string): Promise<(Team & { organization: Organization })[]>;
+  
+  // Team join request operations
+  createTeamJoinRequest(request: InsertTeamJoinRequest): Promise<TeamJoinRequest>;
+  getTeamJoinRequests(teamId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team & { organization: Organization } })[]>;
+  getUserJoinRequests(userId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { team: Team & { organization: Organization } })[]>;
+  getOrganizationJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team })[]>;
+  approveJoinRequest(requestId: string, reviewedBy: string): Promise<void>;
+  rejectJoinRequest(requestId: string, reviewedBy: string): Promise<void>;
+  deleteJoinRequest(requestId: string): Promise<void>;
   
   // Exercise operations
   createExercise(exercise: InsertExercise): Promise<Exercise>;
@@ -270,6 +283,149 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(teamMembers.userId, users.id))
       .where(eq(teamMembers.teamId, teamId));
     return members;
+  }
+
+  async searchTeams(searchTerm: string): Promise<(Team & { organization: Organization })[]> {
+    const results = await db
+      .select({
+        id: teams.id,
+        name: teams.name,
+        description: teams.description,
+        organizationId: teams.organizationId,
+        createdAt: teams.createdAt,
+        updatedAt: teams.updatedAt,
+        organization: organizations,
+      })
+      .from(teams)
+      .innerJoin(organizations, eq(teams.organizationId, organizations.id))
+      .where(sql`LOWER(${teams.name}) LIKE LOWER(${`%${searchTerm}%`})`);
+    return results;
+  }
+
+  // ============================================
+  // TEAM JOIN REQUEST OPERATIONS
+  // ============================================
+
+  async createTeamJoinRequest(requestData: InsertTeamJoinRequest): Promise<TeamJoinRequest> {
+    const [request] = await db
+      .insert(teamJoinRequests)
+      .values(requestData)
+      .returning();
+    return request;
+  }
+
+  async getTeamJoinRequests(teamId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team & { organization: Organization } })[]> {
+    let whereClause = eq(teamJoinRequests.teamId, teamId);
+    if (status) {
+      whereClause = and(eq(teamJoinRequests.teamId, teamId), eq(teamJoinRequests.status, status)) as any;
+    }
+
+    const results = await db
+      .select()
+      .from(teamJoinRequests)
+      .innerJoin(users, eq(teamJoinRequests.userId, users.id))
+      .innerJoin(teams, eq(teamJoinRequests.teamId, teams.id))
+      .innerJoin(organizations, eq(teams.organizationId, organizations.id))
+      .where(whereClause);
+    
+    return results.map((r: any) => ({
+      ...r.team_join_requests,
+      user: r.users,
+      team: {
+        ...r.teams,
+        organization: r.organizations,
+      },
+    }));
+  }
+
+  async getUserJoinRequests(userId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { team: Team & { organization: Organization } })[]> {
+    let whereClause = eq(teamJoinRequests.userId, userId);
+    if (status) {
+      whereClause = and(eq(teamJoinRequests.userId, userId), eq(teamJoinRequests.status, status)) as any;
+    }
+
+    const results = await db
+      .select()
+      .from(teamJoinRequests)
+      .innerJoin(teams, eq(teamJoinRequests.teamId, teams.id))
+      .innerJoin(organizations, eq(teams.organizationId, organizations.id))
+      .where(whereClause);
+    
+    return results.map((r: any) => ({
+      ...r.team_join_requests,
+      team: {
+        ...r.teams,
+        organization: r.organizations,
+      },
+    }));
+  }
+
+  async getOrganizationJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team })[]> {
+    let whereClause = eq(teams.organizationId, organizationId);
+    if (status) {
+      whereClause = and(eq(teams.organizationId, organizationId), eq(teamJoinRequests.status, status)) as any;
+    }
+
+    const results = await db
+      .select()
+      .from(teamJoinRequests)
+      .innerJoin(users, eq(teamJoinRequests.userId, users.id))
+      .innerJoin(teams, eq(teamJoinRequests.teamId, teams.id))
+      .where(whereClause);
+    
+    return results.map((r: any) => ({
+      ...r.team_join_requests,
+      user: r.users,
+      team: r.teams,
+    }));
+  }
+
+  async approveJoinRequest(requestId: string, reviewedBy: string): Promise<void> {
+    // Get the request first
+    const [request] = await db
+      .select()
+      .from(teamJoinRequests)
+      .where(eq(teamJoinRequests.id, requestId));
+    
+    if (!request) {
+      throw new Error('Join request not found');
+    }
+
+    // Update status to approved
+    await db
+      .update(teamJoinRequests)
+      .set({
+        status: 'approved',
+        reviewedBy,
+        reviewedAt: new Date(),
+      })
+      .where(eq(teamJoinRequests.id, requestId));
+
+    // Add the user as a team member
+    await db
+      .insert(teamMembers)
+      .values({
+        teamId: request.teamId,
+        userId: request.userId,
+        role: 'athlete',
+      });
+  }
+
+  async rejectJoinRequest(requestId: string, reviewedBy: string): Promise<void> {
+    await db
+      .update(teamJoinRequests)
+      .set({
+        status: 'rejected',
+        reviewedBy,
+        reviewedAt: new Date(),
+      })
+      .where(eq(teamJoinRequests.id, requestId));
+  }
+
+  async deleteJoinRequest(requestId: string): Promise<void> {
+    await db
+      .delete(teamJoinRequests)
+      .where(eq(teamJoinRequests.id, requestId));
   }
 
   // ============================================

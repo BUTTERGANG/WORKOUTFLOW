@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import Landing from "@/pages/landing";
 import Register from "@/pages/register";
 import Onboarding from "@/pages/onboarding";
+import JoinTeam from "@/pages/join-team";
 import Dashboard from "@/pages/dashboard";
 import Programs from "@/pages/programs";
 import Workout from "@/pages/workout";
@@ -70,6 +71,7 @@ function Router() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/onboarding" component={Onboarding} />
+            <Route path="/join-team" component={JoinTeam} />
             <Route path="/programs" component={Programs} />
             <Route path="/workout" component={Workout} />
             <Route path="/athletes" component={Athletes} />

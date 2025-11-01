@@ -29,10 +29,14 @@ export default function Register() {
         body: data,
       });
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       toast({ title: "Registration successful", description: "Welcome to the platform!" });
-      // Reload page to refresh auth state
-      window.location.href = "/";
+      // Redirect athletes to join team page, coaches to onboarding
+      if (variables.userType === "athlete") {
+        window.location.href = "/join-team";
+      } else {
+        window.location.href = "/onboarding";
+      }
     },
     onError: (error: any) => {
       toast({
