@@ -54,6 +54,9 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Program Builder**: Allows coaches to create and assign detailed training programs.
 - **Exercise Library**: Includes a pre-loaded library with support for custom exercises.
 - **Team Management**: Tools for organizing athletes and managing team memberships.
+  - **Team Search & Join** (Nov 2025): Athletes can search for teams by name and send join requests that coaches can approve/reject
+  - **Join Request Management**: Coaches can view, approve, or reject athlete join requests
+  - **Smart Routing**: Athletes without organizations are directed to /join-team, coaches to /onboarding
 - **Progress Analytics**: Tracks athlete performance metrics like 1RM estimates and volume.
 - **Workout Logging**: Mobile-optimized interface for athletes to log sets, reps, and RPE.
 - **Tools for Athletes**: Includes a rest timer and plate calculator.

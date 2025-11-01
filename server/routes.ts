@@ -302,6 +302,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "You are already a member of this team" });
       }
 
+      // Check if user already has a pending request
+      const existingRequests = await storage.getUserJoinRequests(req.currentUser.id, 'pending');
+      const hasPendingRequest = existingRequests.some(r => r.teamId === req.body.teamId);
+      if (hasPendingRequest) {
+        return res.status(400).json({ message: "You already have a pending request for this team" });
+      }
+
       const data = {
         teamId: req.body.teamId,
         userId: req.currentUser.id,
