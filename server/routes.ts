@@ -196,11 +196,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const teams = await storage.getOrganizationTeams(req.params.orgId);
       
-      // Fetch members for each team
+      // Fetch members for each team, filtering to only athletes
       const teamsWithMembers = await Promise.all(
         teams.map(async (team) => {
-          const members = await storage.getTeamMembers(team.id);
-          return { ...team, members };
+          const allMembers = await storage.getTeamMembers(team.id);
+          // Filter to only include athletes (exclude coaches)
+          const athleteMembers = allMembers.filter(m => m.user.role === 'athlete');
+          return { ...team, members: athleteMembers };
         })
       );
       
@@ -730,8 +732,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
 
+      const org = await storage.getOrganization(program.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Get all assignments for this program
       const assignments = await storage.getProgramAssignments(req.params.programId);
-      res.json(assignments);
+      
+      // If user is org owner or program creator, show all assignments
+      const isOwner = org.ownerId === req.currentUser.id;
+      const isCreator = program.createdBy === req.currentUser.id;
+      
+      if (isOwner || isCreator) {
+        return res.json(assignments);
+      }
+
+      // For coaches, only show assignments for athletes on their teams
+      const userTeams = await storage.getUserTeams(req.currentUser.id);
+      const userTeamIds = userTeams.map(t => t.id);
+      
+      const validAssignments = [];
+      for (const assignment of assignments) {
+        const athleteTeams = await storage.getUserTeams(assignment.athleteId);
+        const athleteTeamIds = athleteTeams.map(t => t.id);
+        
+        // Check if coach and athlete share at least one team
+        const hasSharedTeam = userTeamIds.some(id => athleteTeamIds.includes(id));
+        if (hasSharedTeam) {
+          validAssignments.push(assignment);
+        }
+      }
+
+      res.json(validAssignments);
     } catch (error) {
       console.error("Error fetching program assignments:", error);
       res.status(500).json({ message: "Failed to fetch program assignments" });
@@ -766,16 +799,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      // Check permissions (org owner, program creator, or coach in organization)
+      // Check permissions (org owner or program creator can delete any assignment)
       const isOwner = org.ownerId === req.currentUser.id;
       const isCreator = program.createdBy === req.currentUser.id;
+      
+      if (isOwner || isCreator) {
+        await storage.deleteProgramAssignment(req.params.id);
+        return res.json({ success: true, message: "Assignment removed" });
+      }
+
+      // For coaches, verify they share at least one team with the athlete
       const isCoach = req.currentUser.role === 'admin' || 
                      req.currentUser.role === 'head_coach' || 
                      req.currentUser.role === 'assistant_coach';
       const hasOrgAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
 
-      if (!isOwner && !isCreator && !(isCoach && hasOrgAccess)) {
+      if (!isCoach || !hasOrgAccess) {
         return res.status(403).json({ message: "Forbidden: insufficient permissions to remove assignment" });
+      }
+
+      // Verify coach shares at least one team with the athlete
+      const coachTeams = await storage.getUserTeams(req.currentUser.id);
+      const coachTeamIds = coachTeams.map(t => t.id);
+      
+      const athleteTeams = await storage.getUserTeams(programAssignment.athleteId);
+      const athleteTeamIds = athleteTeams.map(t => t.id);
+      
+      const hasSharedTeam = coachTeamIds.some(id => athleteTeamIds.includes(id));
+      if (!hasSharedTeam) {
+        return res.status(403).json({ message: "Forbidden: you can only remove assignments for athletes on your teams" });
       }
 
       await storage.deleteProgramAssignment(req.params.id);
