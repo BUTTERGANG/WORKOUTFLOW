@@ -23,6 +23,17 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Database Schema**: Utilizes UUIDs for most entity primary keys, with foreign keys referencing `users.id` as VARCHAR.
 - **Error Handling**: Centralized error handling system with custom error classes and Zod validation support.
 - **Security**: Implements `sanitize-html` for XSS prevention and role-based access control on all API endpoints.
+- **Performance Optimizations** (Nov 2025):
+  - Query optimization: Rewrote `getProgramWeeks()` using JOINs to reduce 73 queries → 1 query for 12-week programs
+  - Transaction wrapping: `createCompleteProgram()` creates entire program structure atomically
+  - Cascade deletes: `deleteProgram()` removes all child records (weeks/days/exercises) in transaction
+- **Data Integrity Validation** (Nov 2025):
+  - Prevents duplicate week numbers within programs
+  - Prevents duplicate day numbers within weeks
+  - Prevents duplicate exercise orders within days
+  - Validates positive values for sets, week/day numbers, exercise orders
+  - Validates day numbers are 1-7
+  - Verifies exercise existence before program creation
 
 ### Feature Specifications
 - **Program Builder**: Allows coaches to create and assign detailed training programs.
