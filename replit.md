@@ -36,12 +36,18 @@ The platform is built with a modern web stack, featuring a **React frontend with
   - Verifies exercise existence before program creation
 - **Cascade Delete Implementation** (Nov 2025):
   - **Organization deletion**: Removes all teams, programs (with weeks/days/exercises), workout sessions (with exercise logs/set logs), team members, join requests, and program assignments atomically
-  - **Team deletion**: Removes all team members, join requests, and program assignments atomically
+  - **Team deletion**: Removes team members and join requests (program assignments belong to organizations, not teams)
   - **Program deletion**: Removes all weeks, days, exercises, and program assignments atomically
   - All deletion operations wrapped in transactions to prevent orphaned data
 - **Error Handling Improvements** (Nov 2025):
   - Enhanced JSON parsing in API client with descriptive error messages
   - Prevents silent failures when server returns invalid JSON
+- **Authentication Bug Fixes** (Nov 2025):
+  - Fixed `upsertUser` to only update defined fields, preventing OAuth providers from overwriting existing firstName/lastName with undefined values
+  - Users' profile data (firstName, lastName) now persists correctly across logout/login cycles even when OAuth providers don't provide those fields
+- **Layout Fixes** (Nov 2025):
+  - Fixed main content area to use `flex-1` and `overflow-auto` for proper flex layout with sidebar
+  - Ensures sidebar and main content display side by side without clipping or off-center positioning
 
 ### Feature Specifications
 - **Program Builder**: Allows coaches to create and assign detailed training programs.
