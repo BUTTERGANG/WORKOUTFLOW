@@ -52,6 +52,25 @@ This platform provides coaches with powerful tools to create training programs, 
 
 ## Recent Changes
 
+- **2025-11-01**: Code Quality & Mobile UX Improvements ✅
+  - 🎯 **Performance**: Fixed cache invalidation to scope to affected nodes instead of full tree reload
+    - Mutations now invalidate `['/api/programs', programId, 'weeks']` instead of all programs
+    - Prevents scroll reset and unnecessary re-renders during edit/delete operations
+  - 📱 **Mobile UX**: Improved touch target sizes for better mobile experience
+    - Increased button sizes from 24px to 44px (h-11 w-11) on mobile devices
+    - Edit/delete buttons now meet accessibility standards for touch interfaces
+    - Responsive scaling: 44px on mobile → 32px on desktop
+  - 🔧 **Code Quality**: Standardized query layer to use default fetcher
+    - Removed redundant custom queryFn from program weeks query
+    - Consistent use of TanStack Query best practices
+  - ✅ **Complete CRUD**: Program exercise edit/delete fully functional
+    - Inline editing with save/cancel actions
+    - Delete with confirmation dialog
+    - Real-time UI updates with scoped cache invalidation
+  - 🔐 **Security**: Verified authorization on all endpoints
+    - DELETE/UPDATE restricted to program creator or organization owner
+    - Proper permission checks through entire entity hierarchy
+
 - **2025-10-31**: Authentication System Clarification ✅
   - 🔐 **Authentication**: Using Replit Auth (OpenID Connect provider)
     - Supports **SSO**: Google, GitHub, X (Twitter), Apple sign-in
