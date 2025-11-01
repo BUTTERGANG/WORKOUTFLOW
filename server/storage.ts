@@ -46,7 +46,7 @@ import {
   type InsertMessage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, ilike } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (Required for Replit Auth)
@@ -298,7 +298,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(teams)
       .innerJoin(organizations, eq(teams.organizationId, organizations.id))
-      .where(sql`LOWER(${teams.name}) LIKE LOWER(${`%${searchTerm}%`})`);
+      .where(ilike(teams.name, `%${searchTerm}%`));
     return results;
   }
 

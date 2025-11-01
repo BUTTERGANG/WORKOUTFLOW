@@ -1,0 +1,49 @@
+🔴 Critical Issues Summary
+Backend
+
+PostgreSQL Schema Mismatch - seedAllExercises.ts uses wrong field names (category, muscleGroup) that don't match your DB schema
+SQL Injection Risk - searchTeams() in storage.ts uses unsafe SQL template
+Memory Leak - Rate limiter in sanitization.ts never cleans up old entries
+N+1 Query Problem - getProgramWeeks() makes 73+ queries for a 12-week program
+Race Condition - getProgramWeeks() has no transaction wrapping for related queries
+Missing Null Checks - replitAuth.ts doesn't handle incomplete user profiles during auth
+Hardcoded Equipment - All 193 exercises get 'barbell' equipment regardless of actual type
+
+Frontend
+
+No Error Boundary - App.tsx will show blank screen on crashes
+Race Condition - AppContext.tsx triggers multiple re-renders from localStorage
+Missing JSON Parse Protection - Multiple files parse localStorage without try-catch
+Infinite Re-render Risk - Multiple catch-all routes in App.tsx Router
+CSS Browser Compatibility - hsl from syntax breaks in older browsers
+Missing Query Error Handling - queryClient.ts can fail silently on malformed responses
+No System Theme Detection - Always defaults to dark mode
+Potential XSS - Avatar URLs not validated before rendering
+
+
+⚠️ High Priority Warnings
+
+Missing transaction wrapping on related DB queries
+No request timeout middleware
+No database connection pooling limits
+No proper logging system (console.log everywhere)
+Missing ARIA labels for accessibility
+No retry logic for failed API requests
+localStorage quota could be exceeded with no handling
+CSS z-index: 999 could conflict with modals
+No health check endpoint
+Missing rate limiting on sensitive routes
+
+
+📋 Quick Fixes Needed
+
+Add error boundaries
+Wrap related queries in transactions
+Add try-catch around JSON.parse
+Validate image URLs before rendering
+Clean up rate limiter Map periodically
+Fix equipment field in exercise seed data
+Add browser fallbacks for CSS
+Implement proper error logging
+
+Total Issues Found: 25 (15 Critical, 10 High Priority)

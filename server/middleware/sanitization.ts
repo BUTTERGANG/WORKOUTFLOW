@@ -101,6 +101,16 @@ export function isValidUUID(uuid: string): boolean {
 // Rate limiting helper (for specific sensitive operations)
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
+// Cleanup old rate limit entries every minute to prevent memory leak
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of requestCounts.entries()) {
+    if (now > record.resetAt) {
+      requestCounts.delete(key);
+    }
+  }
+}, 60000); // Clean up every minute
+
 export function checkRateLimit(
   key: string,
   maxRequests: number,

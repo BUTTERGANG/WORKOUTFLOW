@@ -16,14 +16,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Load from localStorage on mount
   useEffect(() => {
-    const storedOrg = localStorage.getItem('currentOrganization');
-    const storedTeam = localStorage.getItem('currentTeam');
+    try {
+      const storedOrg = localStorage.getItem('currentOrganization');
+      const storedTeam = localStorage.getItem('currentTeam');
 
-    if (storedOrg) setCurrentOrganization(JSON.parse(storedOrg));
-    if (storedTeam) setCurrentTeam(JSON.parse(storedTeam));
-    
-    // Clean up any old currentUser data from localStorage
-    localStorage.removeItem('currentUser');
+      // Parse and validate stored data
+      const org = storedOrg ? JSON.parse(storedOrg) : null;
+      const team = storedTeam ? JSON.parse(storedTeam) : null;
+
+      // Batch state updates to prevent multiple re-renders
+      if (org) setCurrentOrganization(org);
+      if (team) setCurrentTeam(team);
+    } catch (error) {
+      console.error('Failed to parse stored app context data:', error);
+      // Clear corrupted data
+      localStorage.removeItem('currentOrganization');
+      localStorage.removeItem('currentTeam');
+    } finally {
+      // Clean up any old currentUser data from localStorage
+      localStorage.removeItem('currentUser');
+    }
   }, []);
 
   // Save to localStorage when changed

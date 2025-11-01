@@ -1,6 +1,7 @@
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { ErrorBoundary } from "react-error-boundary";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -8,6 +9,32 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { AppProvider } from "@/contexts/AppContext";
 import { ThemeProvider } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
+import { AlertTriangle } from "lucide-react";
+
+// Error Fallback Component
+function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+  return (
+    <div className="flex h-screen items-center justify-center p-4">
+      <div className="text-center max-w-md">
+        <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
+        <h1 className="text-2xl font-bold mb-2">Something went wrong</h1>
+        <p className="text-muted-foreground mb-4">An unexpected error occurred. We apologize for the inconvenience.</p>
+        <pre className="mt-4 text-sm text-left p-4 bg-muted rounded-md overflow-auto max-h-40 mb-4">
+          {error.message}
+        </pre>
+        <div className="flex gap-2 justify-center">
+          <Button onClick={() => window.location.href = '/'} variant="outline">
+            Go Home
+          </Button>
+          <Button onClick={resetErrorBoundary}>
+            Try Again
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Pages
 import Landing from "@/pages/landing";
@@ -94,19 +121,21 @@ export default function App() {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="dark">
-        <TooltipProvider>
-          <AppProvider>
-            <SidebarProvider style={style as React.CSSProperties}>
-              <div className="flex h-screen w-full">
-                <Router />
-              </div>
-            </SidebarProvider>
-            <Toaster />
-          </AppProvider>
-        </TooltipProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary FallbackComponent={ErrorFallback} onReset={() => window.location.reload()}>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider defaultTheme="dark">
+          <TooltipProvider>
+            <AppProvider>
+              <SidebarProvider style={style as React.CSSProperties}>
+                <div className="flex h-screen w-full">
+                  <Router />
+                </div>
+              </SidebarProvider>
+              <Toaster />
+            </AppProvider>
+          </TooltipProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
