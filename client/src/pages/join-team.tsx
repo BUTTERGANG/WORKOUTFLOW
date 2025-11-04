@@ -168,9 +168,14 @@ export default function JoinTeam() {
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 space-y-1">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <Building2 className="h-5 w-5 text-muted-foreground" />
                                 <h3 className="font-semibold">{org.name}</h3>
+                                {org.inviteCode && (
+                                  <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded" data-testid="text-invite-code">
+                                    {org.inviteCode}
+                                  </span>
+                                )}
                               </div>
                               {org.description && (
                                 <p className="text-sm text-muted-foreground">{org.description}</p>
