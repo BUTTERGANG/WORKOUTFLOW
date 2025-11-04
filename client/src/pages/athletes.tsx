@@ -27,11 +27,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { User, TeamMember, Program, ProgramAssignment, TeamJoinRequest } from "@shared/schema";
+import type { User, OrganizationMember, Program, ProgramAssignment, OrganizationJoinRequest } from "@shared/schema";
 
-type JoinRequest = TeamJoinRequest & {
+type JoinRequest = OrganizationJoinRequest & {
   user: User;
-  team: { name: string; organizationId: string };
 };
 
 export default function Athletes() {
@@ -40,18 +39,18 @@ export default function Athletes() {
   const { currentOrganization, currentTeam } = useApp();
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [selectedAthlete, setSelectedAthlete] = useState<TeamMember | null>(null);
+  const [selectedAthlete, setSelectedAthlete] = useState<OrganizationMember | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [selectedProgram, setSelectedProgram] = useState("");
   const [startDate, setStartDate] = useState("");
 
-  // Fetch team members
-  const { data: teamMembers } = useQuery<(TeamMember & { user: User })[]>({
-    queryKey: ['/api/teams', currentTeam?.id, 'members'],
-    enabled: !!currentTeam,
+  // Fetch organization members
+  const { data: organizationMembers } = useQuery<(OrganizationMember & { user: User })[]>({
+    queryKey: ['/api/organizations', currentOrganization?.id, 'members'],
+    enabled: !!currentOrganization,
     queryFn: async () => {
-      const res = await fetch(`/api/teams/${currentTeam!.id}/members`);
+      const res = await fetch(`/api/organizations/${currentOrganization!.id}/members`);
       if (!res.ok) throw new Error('Failed to fetch members');
       return res.json();
     },
@@ -74,21 +73,21 @@ export default function Athletes() {
     },
   });
 
-  // Fetch pending join requests for current team
+  // Fetch pending join requests for current organization
   const { data: joinRequests } = useQuery<JoinRequest[]>({
-    queryKey: ['/api/teams', currentTeam?.id, 'join-requests'],
-    enabled: !!currentTeam,
+    queryKey: ['/api/organizations', currentOrganization?.id, 'join-requests'],
+    enabled: !!currentOrganization,
     queryFn: async () => {
-      const res = await fetch(`/api/teams/${currentTeam!.id}/join-requests?status=pending`);
+      const res = await fetch(`/api/organizations/${currentOrganization!.id}/join-requests?status=pending`);
       if (!res.ok) throw new Error('Failed to fetch join requests');
       return res.json();
     },
   });
 
-  // Add team member mutation
+  // Add team member mutation (deprecated - keeping for backward compatibility)
   const addMemberMutation = useMutation({
     mutationFn: async (data: { teamId: string; email: string; role: string }) => {
-      return await apiRequest<TeamMember>(`/api/teams/${data.teamId}/members`, {
+      return await apiRequest(`/api/teams/${data.teamId}/members`, {
         method: "POST",
         body: { email: data.email, role: data.role },
       });
@@ -96,6 +95,7 @@ export default function Athletes() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/teams'] });
       queryClient.invalidateQueries({ queryKey: ['/api/teams', variables.teamId, 'members'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
       toast({ title: "Success", description: "Team member invited successfully" });
       setInviteDialogOpen(false);
       setNewMemberEmail("");
@@ -140,16 +140,16 @@ export default function Athletes() {
   // Approve join request mutation
   const approveJoinRequestMutation = useMutation({
     mutationFn: async (requestId: string) => {
-      return await apiRequest(`/api/team-join-requests/${requestId}/approve`, {
+      return await apiRequest(`/api/organization-join-requests/${requestId}/approve`, {
         method: "POST",
       });
     },
     onSuccess: () => {
-      if (currentTeam) {
-        queryClient.invalidateQueries({ queryKey: ['/api/teams', currentTeam.id, 'join-requests'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/teams', currentTeam.id, 'members'] });
+      if (currentOrganization) {
+        queryClient.invalidateQueries({ queryKey: ['/api/organizations', currentOrganization.id, 'join-requests'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/organizations', currentOrganization.id, 'members'] });
       }
-      queryClient.invalidateQueries({ queryKey: ['/api/teams'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
       toast({ title: "Success", description: "Join request approved" });
     },
     onError: (error: any) => {
@@ -164,13 +164,13 @@ export default function Athletes() {
   // Reject join request mutation
   const rejectJoinRequestMutation = useMutation({
     mutationFn: async (requestId: string) => {
-      return await apiRequest(`/api/team-join-requests/${requestId}/reject`, {
+      return await apiRequest(`/api/organization-join-requests/${requestId}/reject`, {
         method: "POST",
       });
     },
     onSuccess: () => {
-      if (currentTeam) {
-        queryClient.invalidateQueries({ queryKey: ['/api/teams', currentTeam.id, 'join-requests'] });
+      if (currentOrganization) {
+        queryClient.invalidateQueries({ queryKey: ['/api/organizations', currentOrganization.id, 'join-requests'] });
       }
       toast({ title: "Success", description: "Join request rejected" });
     },
@@ -262,15 +262,15 @@ export default function Athletes() {
 
   // Memoize filtered members for performance
   const filteredMembers = useMemo(() => {
-    if (!teamMembers) return undefined;
+    if (!organizationMembers) return undefined;
     const query = searchQuery.toLowerCase();
-    return teamMembers.filter((member) =>
+    return organizationMembers.filter((member) =>
       member.user &&
       (member.user.firstName?.toLowerCase().includes(query) ||
         member.user.lastName?.toLowerCase().includes(query) ||
         member.user.email?.toLowerCase().includes(query))
     );
-  }, [teamMembers, searchQuery]);
+  }, [organizationMembers, searchQuery]);
 
   // Get assignment for athlete
   const getAthleteAssignment = (athleteId: string) => {
@@ -419,13 +419,13 @@ export default function Athletes() {
         )}
 
         {/* Athletes Grid */}
-        {!teamMembers || teamMembers.length === 0 ? (
+        {!organizationMembers || organizationMembers.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Users className="mb-4 h-12 w-12 text-muted-foreground" />
               <h3 className="mb-2 text-lg font-semibold">No Athletes Yet</h3>
               <p className="mb-4 text-center text-sm text-muted-foreground">
-                Add athletes to your team to get started
+                Add athletes to your organization to get started
               </p>
               <Button onClick={() => setInviteDialogOpen(true)} variant="outline">
                 Add Athlete

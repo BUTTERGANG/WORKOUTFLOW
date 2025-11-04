@@ -215,6 +215,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get organization members
+  app.get('/api/organizations/:orgId/members', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
+    try {
+      const members = await storage.getOrganizationMembers(req.params.orgId);
+      res.json(members);
+    } catch (error) {
+      console.error("Error fetching organization members:", error);
+      res.status(500).json({ message: "Failed to fetch organization members" });
+    }
+  });
+
   // ============================================
   // TEAM ROUTES
   // ============================================
