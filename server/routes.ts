@@ -152,7 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       console.log("Creating organization for user:", userId, "with body:", req.body);
       const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
       const org = await storage.createOrganization(data);
@@ -171,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const orgs = await storage.getUserOrganizations(userId);
       res.json(orgs);
     } catch (error) {
@@ -182,7 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/organizations/my', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const userOrgs = await storage.getUserOrganizations(userId);
       res.json(userOrgs);
     } catch (error) {
@@ -203,7 +203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify user has access to this organization
-      const hasAccess = await hasOrganizationAccess(req.currentUser.id, req.params.id);
+      const hasAccess = await hasOrganizationAccess(req.currentUser!.id, req.params.id);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: not a member of this organization" });
       }
@@ -233,14 +233,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
       
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
       
       // Coaches must be members of the organization
       if (!isOwner && isCoach) {
-        const hasAccess = await hasOrganizationAccess(req.currentUser.id, data.organizationId);
+        const hasAccess = await hasOrganizationAccess(req.currentUser!.id, data.organizationId);
         if (!hasAccess) {
           return res.status(403).json({ message: "Forbidden: not a member of this organization" });
         }
@@ -281,19 +281,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, role } = req.body;
       
-      // Look up user by email, or create placeholder account
-      let user = await storage.getUserByEmail(email);
+      // Look up user by email
+      const user = await storage.getUserByEmail(email);
       if (!user) {
-        // Auto-create user account for invitation
-        // Generate a unique ID for the invited user (will be replaced when they actually log in)
-        const invitedUserId = `invited_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        user = await storage.upsertUser({
-          id: invitedUserId,
-          email,
-          firstName: null,
-          lastName: null,
-          profileImageUrl: null,
-        });
+        return res.status(404).json({ message: "User not found. User must create an account first." });
       }
       
       // Add user to team
@@ -365,7 +356,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user already has a pending request
-      const existingRequests = await storage.getUserJoinRequests(req.currentUser.id, 'pending');
+      const existingRequests = await storage.getUserJoinRequests(req.currentUser!.id, 'pending');
       const hasPendingRequest = existingRequests.some(r => r.teamId === req.body.teamId);
       if (hasPendingRequest) {
         return res.status(400).json({ message: "You already have a pending request for this team" });
@@ -373,7 +364,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = {
         teamId: req.body.teamId,
-        userId: req.currentUser.id,
+        userId: req.currentUser!.id,
         message: req.body.message || null,
         status: 'pending' as const,
       };
@@ -406,7 +397,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
-      const requests = await storage.getUserJoinRequests(req.currentUser.id, status);
+      const requests = await storage.getUserJoinRequests(req.currentUser!.id, status);
       res.json(requests);
     } catch (error) {
       console.error("Error fetching user join requests:", error);
@@ -449,20 +440,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Team not found" });
       }
 
-      const userHasTeamAccess = await hasTeamAccess(req.currentUser.id, request.teamId);
+      const userHasTeamAccess = await hasTeamAccess(req.currentUser!.id, request.teamId);
       if (!userHasTeamAccess) {
         return res.status(403).json({ message: "Forbidden: you don't have access to this team" });
       }
 
       // Verify user is a coach
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
       if (!isCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches can approve join requests" });
       }
 
-      await storage.approveJoinRequest(req.params.id, req.currentUser.id);
+      await storage.approveJoinRequest(req.params.id, req.currentUser!.id);
       res.json({ success: true, message: "Join request approved" });
     } catch (error) {
       console.error("Error approving join request:", error);
@@ -493,20 +484,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Team not found" });
       }
 
-      const userHasTeamAccess = await hasTeamAccess(req.currentUser.id, request.teamId);
+      const userHasTeamAccess = await hasTeamAccess(req.currentUser!.id, request.teamId);
       if (!userHasTeamAccess) {
         return res.status(403).json({ message: "Forbidden: you don't have access to this team" });
       }
 
       // Verify user is a coach
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
       if (!isCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches can reject join requests" });
       }
 
-      await storage.rejectJoinRequest(req.params.id, req.currentUser.id);
+      await storage.rejectJoinRequest(req.params.id, req.currentUser!.id);
       res.json({ success: true, message: "Join request rejected" });
     } catch (error) {
       console.error("Error rejecting join request:", error);
@@ -532,7 +523,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only the requester can delete their own request
-      if (request.userId !== req.currentUser.id) {
+      if (request.userId !== req.currentUser!.id) {
         return res.status(403).json({ message: "Forbidden: you can only delete your own join requests" });
       }
 
@@ -554,12 +545,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const data = insertExerciseSchema.parse({ ...req.body, createdBy: req.currentUser.id });
+      const data = insertExerciseSchema.parse({ ...req.body, createdBy: req.currentUser!.id });
 
       // Verify user is a coach or org owner
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
 
       // If organizationId is provided, verify access
       if (data.organizationId) {
@@ -568,13 +559,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ message: "Organization not found" });
         }
 
-        const isOwner = org.ownerId === req.currentUser.id;
+        const isOwner = org.ownerId === req.currentUser!.id;
         
         if (!isOwner && !isCoach) {
           return res.status(403).json({ message: "Forbidden: only coaches or org owners can create organization exercises" });
         }
 
-        const hasAccess = await hasOrganizationAccess(req.currentUser.id, data.organizationId);
+        const hasAccess = await hasOrganizationAccess(req.currentUser!.id, data.organizationId);
         if (!hasAccess) {
           return res.status(403).json({ message: "Forbidden: not a member of this organization" });
         }
@@ -598,7 +589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // If organizationId is provided, verify user has access to it
       if (organizationId) {
-        const hasAccess = await hasOrganizationAccess(req.currentUser.id, organizationId);
+        const hasAccess = await hasOrganizationAccess(req.currentUser!.id, organizationId);
         if (!hasAccess) {
           return res.status(403).json({ message: "Forbidden: not a member of this organization" });
         }
@@ -619,7 +610,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const data = insertProgramSchema.parse({ ...req.body, createdBy: userId });
       
       // Verify user owns the organization or is a coach with access
@@ -653,7 +644,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const organizationId = req.query.organizationId as string;
       
       if (!organizationId) {
@@ -712,17 +703,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
 
       if (!isOwner && !isCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches or org owners can modify programs" });
       }
 
       // Verify access to organization
-      const hasAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
+      const hasAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -743,7 +734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify user has access to the program
-      const hasAccess = await hasProgramAccess(req.currentUser.id, req.params.programId);
+      const hasAccess = await hasProgramAccess(req.currentUser!.id, req.params.programId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -784,16 +775,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
 
       if (!isOwner && !isCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches or org owners can modify programs" });
       }
 
-      const hasAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
+      const hasAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -820,7 +811,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify user has access to the program
-      const hasAccess = await hasProgramAccess(req.currentUser.id, week.programId);
+      const hasAccess = await hasProgramAccess(req.currentUser!.id, week.programId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -860,16 +851,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
 
       if (!isOwner && !isCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches or org owners can modify programs" });
       }
 
-      const hasAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
+      const hasAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -901,7 +892,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify user has access to the program
-      const hasAccess = await hasProgramAccess(req.currentUser.id, week.programId);
+      const hasAccess = await hasProgramAccess(req.currentUser!.id, week.programId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -924,7 +915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      const data = insertProgramAssignmentSchema.parse({ ...req.body, assignedBy: req.currentUser.id });
+      const data = insertProgramAssignmentSchema.parse({ ...req.body, assignedBy: req.currentUser!.id });
 
       // Verify user is a coach or org owner
       const program = await storage.getProgram(data.programId);
@@ -937,17 +928,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
 
       if (!isOwner && !isCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches or org owners can assign programs" });
       }
 
       // Verify coach has access to both program and athlete
-      const hasAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
+      const hasAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -969,16 +960,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Users can only view their own assignments unless they're a coach in the same organization
       const athleteId = req.params.athleteId;
       
-      if (req.currentUser.id !== athleteId) {
+      if (req.currentUser!.id !== athleteId) {
         // Check if user is a coach with access to this athlete
         const athlete = await storage.getUser(athleteId);
         if (!athlete) {
           return res.status(404).json({ message: "Athlete not found" });
         }
 
-        const isCoach = req.currentUser.role === 'admin' || 
-                       req.currentUser.role === 'head_coach' || 
-                       req.currentUser.role === 'assistant_coach';
+        const isCoach = req.currentUser!.role === 'admin' || 
+                       req.currentUser!.role === 'head_coach' || 
+                       req.currentUser!.role === 'assistant_coach';
         
         if (!isCoach) {
           return res.status(403).json({ message: "Forbidden: can only view your own assignments" });
@@ -986,10 +977,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Verify coach has access to athlete's organization
         const athleteTeams = await storage.getUserTeams(athleteId);
-        const coachOrgs = req.currentUser.organizationIds || [];
+        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
+        const coachOrgIds = coachOrgs.map(org => org.id);
         const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
         
-        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgs.includes(orgId));
+        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
         if (!hasSharedOrg) {
           return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
         }
@@ -1015,7 +1007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify user has access to this program
-      const hasAccess = await hasProgramAccess(req.currentUser.id, req.params.programId);
+      const hasAccess = await hasProgramAccess(req.currentUser!.id, req.params.programId);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -1029,15 +1021,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const assignments = await storage.getProgramAssignments(req.params.programId);
       
       // If user is org owner or program creator, show all assignments
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = program.createdBy === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = program.createdBy === req.currentUser!.id;
       
       if (isOwner || isCreator) {
         return res.json(assignments);
       }
 
       // For coaches, only show assignments for athletes on their teams
-      const userTeams = await storage.getUserTeams(req.currentUser.id);
+      const userTeams = await storage.getUserTeams(req.currentUser!.id);
       const userTeamIds = userTeams.map(t => t.id);
       
       const validAssignments = [];
@@ -1088,8 +1080,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check permissions (org owner or program creator can delete any assignment)
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = program.createdBy === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = program.createdBy === req.currentUser!.id;
       
       if (isOwner || isCreator) {
         await storage.deleteProgramAssignment(req.params.id);
@@ -1097,17 +1089,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // For coaches, verify they share at least one team with the athlete
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
-      const hasOrgAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
+      const hasOrgAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
 
       if (!isCoach || !hasOrgAccess) {
         return res.status(403).json({ message: "Forbidden: insufficient permissions to remove assignment" });
       }
 
       // Verify coach shares at least one team with the athlete
-      const coachTeams = await storage.getUserTeams(req.currentUser.id);
+      const coachTeams = await storage.getUserTeams(req.currentUser!.id);
       const coachTeamIds = coachTeams.map(t => t.id);
       
       const athleteTeams = await storage.getUserTeams(programAssignment.athleteId);
@@ -1132,7 +1124,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/workout-sessions', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const data = insertWorkoutSessionSchema.parse({ ...req.body, athleteId: userId });
       const session = await storage.createWorkoutSession(data);
       res.json(session);
@@ -1144,7 +1136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/workout-sessions', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const sessions = await storage.getAthleteWorkouts(userId);
       res.json(sessions);
     } catch (error) {
@@ -1165,10 +1157,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Users can only view their own sessions unless they're a coach
-      if (session.athleteId !== req.currentUser.id) {
-        const isCoach = req.currentUser.role === 'admin' || 
-                       req.currentUser.role === 'head_coach' || 
-                       req.currentUser.role === 'assistant_coach';
+      if (session.athleteId !== req.currentUser!.id) {
+        const isCoach = req.currentUser!.role === 'admin' || 
+                       req.currentUser!.role === 'head_coach' || 
+                       req.currentUser!.role === 'assistant_coach';
         
         if (!isCoach) {
           return res.status(403).json({ message: "Forbidden: can only view your own workout sessions" });
@@ -1176,10 +1168,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Verify coach has access to athlete's organization
         const athleteTeams = await storage.getUserTeams(session.athleteId);
-        const coachOrgs = req.currentUser.organizationIds || [];
+        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
+        const coachOrgIds = coachOrgs.map(org => org.id);
         const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
         
-        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgs.includes(orgId));
+        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
         if (!hasSharedOrg) {
           return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
         }
@@ -1205,7 +1198,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only the athlete who owns the session can update it
-      if (existingSession.athleteId !== req.currentUser.id) {
+      if (existingSession.athleteId !== req.currentUser!.id) {
         return res.status(403).json({ message: "Forbidden: can only update your own workout sessions" });
       }
 
@@ -1233,7 +1226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only the athlete who owns the session can add exercise logs
-      if (session.athleteId !== req.currentUser.id) {
+      if (session.athleteId !== req.currentUser!.id) {
         return res.status(403).json({ message: "Forbidden: can only add exercise logs to your own sessions" });
       }
 
@@ -1259,20 +1252,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check ownership or coach access
-      if (session.athleteId !== req.currentUser.id) {
-        const isCoach = req.currentUser.role === 'admin' || 
-                       req.currentUser.role === 'head_coach' || 
-                       req.currentUser.role === 'assistant_coach';
+      if (session.athleteId !== req.currentUser!.id) {
+        const isCoach = req.currentUser!.role === 'admin' || 
+                       req.currentUser!.role === 'head_coach' || 
+                       req.currentUser!.role === 'assistant_coach';
         
         if (!isCoach) {
           return res.status(403).json({ message: "Forbidden: can only view your own exercise logs" });
         }
 
         const athleteTeams = await storage.getUserTeams(session.athleteId);
-        const coachOrgs = req.currentUser.organizationIds || [];
+        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
+        const coachOrgIds = coachOrgs.map(org => org.id);
         const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
         
-        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgs.includes(orgId));
+        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
         if (!hasSharedOrg) {
           return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
         }
@@ -1304,7 +1298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only the athlete who owns the session can add set logs
-      if (session.athleteId !== req.currentUser.id) {
+      if (session.athleteId !== req.currentUser!.id) {
         return res.status(403).json({ message: "Forbidden: can only add set logs to your own sessions" });
       }
 
@@ -1335,20 +1329,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check ownership or coach access
-      if (session.athleteId !== req.currentUser.id) {
-        const isCoach = req.currentUser.role === 'admin' || 
-                       req.currentUser.role === 'head_coach' || 
-                       req.currentUser.role === 'assistant_coach';
+      if (session.athleteId !== req.currentUser!.id) {
+        const isCoach = req.currentUser!.role === 'admin' || 
+                       req.currentUser!.role === 'head_coach' || 
+                       req.currentUser!.role === 'assistant_coach';
         
         if (!isCoach) {
           return res.status(403).json({ message: "Forbidden: can only view your own set logs" });
         }
 
         const athleteTeams = await storage.getUserTeams(session.athleteId);
-        const coachOrgs = req.currentUser.organizationIds || [];
+        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
+        const coachOrgIds = coachOrgs.map(org => org.id);
         const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
         
-        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgs.includes(orgId));
+        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
         if (!hasSharedOrg) {
           return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
         }
@@ -1368,7 +1363,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const data = insertMessageSchema.parse({ ...req.body, senderId: userId });
       const message = await storage.createMessage(data);
       res.json(message);
@@ -1380,7 +1375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/messages/conversation/:otherUserId', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.currentUser.id;
+      const userId = req.currentUser!.id;
       const messages = await storage.getConversation(userId, req.params.otherUserId);
       res.json(messages);
     } catch (error) {
@@ -1416,7 +1411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only owner can delete
-      if (org.ownerId !== req.currentUser.id) {
+      if (org.ownerId !== req.currentUser!.id) {
         return res.status(403).json({ message: "Forbidden: only organization owner can delete" });
       }
 
@@ -1446,9 +1441,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check permissions
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isHeadCoach = req.currentUser.role === 'head_coach' && 
-                          await hasOrganizationAccess(req.currentUser.id, team.organizationId);
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isHeadCoach = req.currentUser!.role === 'head_coach' && 
+                          await hasOrganizationAccess(req.currentUser!.id, team.organizationId);
 
       if (!isOwner && !isHeadCoach) {
         return res.status(403).json({ message: "Forbidden: only organization owner or head coach can delete teams" });
@@ -1480,10 +1475,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check permissions (owner, head coach, or removing self)
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isHeadCoach = req.currentUser.role === 'head_coach' && 
-                          await hasOrganizationAccess(req.currentUser.id, team.organizationId);
-      const isRemovingSelf = req.params.userId === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isHeadCoach = req.currentUser!.role === 'head_coach' && 
+                          await hasOrganizationAccess(req.currentUser!.id, team.organizationId);
+      const isRemovingSelf = req.params.userId === req.currentUser!.id;
 
       if (!isOwner && !isHeadCoach && !isRemovingSelf) {
         return res.status(403).json({ message: "Forbidden: insufficient permissions" });
@@ -1515,8 +1510,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = program.createdBy === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = program.createdBy === req.currentUser!.id;
 
       if (!isOwner && !isCreator) {
         return res.status(403).json({ message: "Forbidden: only program creator or org owner can delete" });
@@ -1553,8 +1548,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = exercise.createdBy === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = exercise.createdBy === req.currentUser!.id;
 
       if (!isOwner && !isCreator) {
         return res.status(403).json({ message: "Forbidden: only exercise creator or org owner can delete" });
@@ -1581,7 +1576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only athlete can delete their own session
-      if (session.athleteId !== req.currentUser.id) {
+      if (session.athleteId !== req.currentUser!.id) {
         return res.status(403).json({ message: "Forbidden: can only delete your own workout sessions" });
       }
 
@@ -1620,11 +1615,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = exercise.createdBy === req.currentUser.id;
-      const isCoach = req.currentUser.role === 'admin' || 
-                     req.currentUser.role === 'head_coach' || 
-                     req.currentUser.role === 'assistant_coach';
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = exercise.createdBy === req.currentUser!.id;
+      const isCoach = req.currentUser!.role === 'admin' || 
+                     req.currentUser!.role === 'head_coach' || 
+                     req.currentUser!.role === 'assistant_coach';
 
       // Must be owner, creator, or coach in the org
       if (!isOwner && !isCreator && !isCoach) {
@@ -1632,7 +1627,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       if (isCoach && !isOwner && !isCreator) {
-        const hasAccess = await hasOrganizationAccess(req.currentUser.id, exercise.organizationId);
+        const hasAccess = await hasOrganizationAccess(req.currentUser!.id, exercise.organizationId);
         if (!hasAccess) {
           return res.status(403).json({ message: "Forbidden: not a member of this organization" });
         }
@@ -1678,8 +1673,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = program.createdBy === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = program.createdBy === req.currentUser!.id;
 
       if (!isOwner && !isCreator) {
         return res.status(403).json({ message: "Forbidden: only program creator or org owner can update" });
@@ -1738,8 +1733,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = program.createdBy === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = program.createdBy === req.currentUser!.id;
 
       if (!isOwner && !isCreator) {
         return res.status(403).json({ message: "Forbidden: only program creator or org owner can update" });
@@ -1799,8 +1794,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
 
-      const isOwner = org.ownerId === req.currentUser.id;
-      const isCreator = program.createdBy === req.currentUser.id;
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const isCreator = program.createdBy === req.currentUser!.id;
 
       if (!isOwner && !isCreator) {
         return res.status(403).json({ message: "Forbidden: only program creator or org owner can delete" });

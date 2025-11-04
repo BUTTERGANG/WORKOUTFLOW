@@ -5,25 +5,19 @@ import { storage } from "../storage";
 declare global {
   namespace Express {
     interface User {
-      claims: {
-        sub: string;
-        email?: string;
-        firstName?: string;
-        lastName?: string;
-        profileImageUrl?: string;
-      };
-      expires_at?: number;
-      refresh_token?: string;
+      id: string;
+      email: string;
+      passwordHash: string;
+      firstName: string;
+      lastName: string;
+      profileImageUrl: string | null;
+      role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete';
+      createdAt: Date | null;
+      updatedAt: Date | null;
     }
     
     interface Request {
-      currentUser?: {
-        id: string;
-        email: string | null;
-        role: string;
-        teams: any[];
-        organizationIds: string[];
-      };
+      currentUser?: User;
     }
   }
 }
