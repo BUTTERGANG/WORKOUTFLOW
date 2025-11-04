@@ -405,15 +405,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get join requests for an organization (coaches/admins only)
-  app.get('/api/organizations/:orgId/join-requests', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
+  // Get team join requests for an organization (coaches/admins only)
+  app.get('/api/organizations/:orgId/team-join-requests', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
     try {
       const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
-      const requests = await storage.getOrganizationJoinRequests(req.params.orgId, status);
+      const requests = await storage.getOrganizationTeamJoinRequests(req.params.orgId, status);
       res.json(requests);
     } catch (error) {
-      console.error("Error fetching organization join requests:", error);
-      res.status(500).json({ message: "Failed to fetch join requests" });
+      console.error("Error fetching organization team join requests:", error);
+      res.status(500).json({ message: "Failed to fetch team join requests" });
     }
   });
 
@@ -532,6 +532,185 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting join request:", error);
       res.status(500).json({ message: "Failed to delete join request" });
+    }
+  });
+
+  // ============================================
+  // ORGANIZATION JOIN REQUEST ROUTES
+  // ============================================
+
+  // Search for organizations
+  app.post('/api/organizations/search', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const { searchTerm } = req.body;
+      if (!searchTerm || typeof searchTerm !== 'string') {
+        return res.status(400).json({ message: "Search term is required" });
+      }
+      
+      const organizations = await storage.searchOrganizations(searchTerm);
+      res.json(organizations);
+    } catch (error) {
+      console.error("Error searching organizations:", error);
+      res.status(500).json({ message: "Failed to search organizations" });
+    }
+  });
+
+  // Create an organization join request
+  app.post('/api/organization-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { organizationId } = req.body;
+      if (!organizationId) {
+        return res.status(400).json({ message: "Organization ID is required" });
+      }
+
+      // Check if organization exists
+      const org = await storage.getOrganization(organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Check if user is already a member
+      const members = await storage.getOrganizationMembers(organizationId);
+      if (members.some(m => m.userId === req.currentUser!.id)) {
+        return res.status(400).json({ message: "You are already a member of this organization" });
+      }
+
+      // Check if user already has a pending request
+      const userRequests = await storage.getUserOrganizationJoinRequests(req.currentUser.id, 'pending');
+      if (userRequests.some(r => r.organizationId === organizationId)) {
+        return res.status(400).json({ message: "You already have a pending request for this organization" });
+      }
+
+      const joinRequest = await storage.createOrganizationJoinRequest({
+        organizationId,
+        userId: req.currentUser.id,
+        status: 'pending'
+      });
+
+      res.status(201).json(joinRequest);
+    } catch (error) {
+      console.error("Error creating organization join request:", error);
+      res.status(500).json({ message: "Failed to create join request" });
+    }
+  });
+
+  // Get user's organization join requests
+  app.get('/api/organization-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
+      const requests = await storage.getUserOrganizationJoinRequests(req.currentUser.id, status);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching user organization join requests:", error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  // Get organization join requests (for coaches/admins)
+  app.get('/api/organizations/:orgId/join-requests', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
+    try {
+      const status = req.query.status as 'pending' | 'approved' | 'rejected' | undefined;
+      const requests = await storage.getOrganizationJoinRequests(req.params.orgId, status);
+      res.json(requests);
+    } catch (error) {
+      console.error("Error fetching organization join requests:", error);
+      res.status(500).json({ message: "Failed to fetch join requests" });
+    }
+  });
+
+  // Approve an organization join request
+  app.post('/api/organization-join-requests/:id/approve', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Get the join request
+      const [request] = await db
+        .select()
+        .from(organizationJoinRequests)
+        .where(eq(organizationJoinRequests.id, req.params.id));
+
+      if (!request) {
+        return res.status(404).json({ message: "Join request not found" });
+      }
+
+      // Verify user has access to this organization
+      const org = await storage.getOrganization(request.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const userHasOrgAccess = await hasOrganizationAccess(req.currentUser.id, request.organizationId);
+      if (!userHasOrgAccess) {
+        return res.status(403).json({ message: "Forbidden: you don't have access to this organization" });
+      }
+
+      // Verify user is a coach
+      const isCoach = req.currentUser.role === 'admin' || 
+                     req.currentUser.role === 'head_coach' || 
+                     req.currentUser.role === 'assistant_coach';
+      if (!isCoach) {
+        return res.status(403).json({ message: "Forbidden: only coaches can approve join requests" });
+      }
+
+      await storage.approveOrganizationJoinRequest(req.params.id, req.currentUser.id);
+      res.json({ success: true, message: "Join request approved" });
+    } catch (error) {
+      console.error("Error approving organization join request:", error);
+      res.status(500).json({ message: "Failed to approve join request" });
+    }
+  });
+
+  // Reject an organization join request
+  app.post('/api/organization-join-requests/:id/reject', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Get the join request
+      const [request] = await db
+        .select()
+        .from(organizationJoinRequests)
+        .where(eq(organizationJoinRequests.id, req.params.id));
+
+      if (!request) {
+        return res.status(404).json({ message: "Join request not found" });
+      }
+
+      // Verify user has access to this organization
+      const org = await storage.getOrganization(request.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const userHasOrgAccess = await hasOrganizationAccess(req.currentUser.id, request.organizationId);
+      if (!userHasOrgAccess) {
+        return res.status(403).json({ message: "Forbidden: you don't have access to this organization" });
+      }
+
+      // Verify user is a coach
+      const isCoach = req.currentUser.role === 'admin' || 
+                     req.currentUser.role === 'head_coach' || 
+                     req.currentUser.role === 'assistant_coach';
+      if (!isCoach) {
+        return res.status(403).json({ message: "Forbidden: only coaches can reject join requests" });
+      }
+
+      await storage.rejectOrganizationJoinRequest(req.params.id, req.currentUser.id);
+      res.json({ success: true, message: "Join request rejected" });
+    } catch (error) {
+      console.error("Error rejecting organization join request:", error);
+      res.status(500).json({ message: "Failed to reject join request" });
     }
   });
 

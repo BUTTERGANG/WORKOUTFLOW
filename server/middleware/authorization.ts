@@ -57,9 +57,9 @@ export async function hasOrganizationAccess(userId: string, organizationId: stri
       return true;
     }
 
-    // Check if user is a member through teams
-    const userTeams = await storage.getUserTeams(userId);
-    return userTeams.some(team => team.organizationId === organizationId);
+    // Check if user is a member of the organization
+    const members = await storage.getOrganizationMembers(organizationId);
+    return members.some(member => member.userId === userId);
   } catch (error) {
     console.error("Error checking organization access:", error);
     return false;

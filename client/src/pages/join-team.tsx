@@ -12,28 +12,20 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Search, Users, Building2, CheckCircle, Clock, XCircle, Loader2 } from "lucide-react";
 
-type Team = {
+type Organization = {
   id: string;
   name: string;
   description: string | null;
+};
+
+type OrganizationJoinRequest = {
+  id: string;
   organizationId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
   organization: {
     id: string;
     name: string;
-  };
-};
-
-type JoinRequest = {
-  id: string;
-  teamId: string;
-  status: 'pending' | 'approved' | 'rejected';
-  createdAt: string;
-  team: {
-    id: string;
-    name: string;
-    organization: {
-      name: string;
-    };
   };
 };
 
@@ -43,33 +35,25 @@ export default function JoinTeam() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [message, setMessage] = useState("");
-
-  // Search teams
-  const { data: teams, isLoading: searchingTeams, refetch } = useQuery<Team[]>({
-    queryKey: ['/api/teams/search', searchTerm],
-    enabled: false, // Disable automatic fetching
-  });
+  const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null);
 
   // Get user's join requests
-  const { data: joinRequests } = useQuery<JoinRequest[]>({
-    queryKey: ['/api/my-join-requests'],
+  const { data: joinRequests } = useQuery<OrganizationJoinRequest[]>({
+    queryKey: ['/api/organization-join-requests'],
   });
 
   const searchMutation = useMutation({
     mutationFn: async (query: string) => {
-      const response = await fetch(`/api/teams/search?q=${encodeURIComponent(query)}`, {
-        credentials: 'include',
+      return await apiRequest("/api/organizations/search", {
+        method: "POST",
+        body: { searchTerm: query },
       });
-      if (!response.ok) throw new Error('Failed to search teams');
-      return response.json();
     },
   });
 
   const joinRequestMutation = useMutation({
-    mutationFn: async (data: { teamId: string; message?: string }) => {
-      return await apiRequest("/api/team-join-requests", {
+    mutationFn: async (data: { organizationId: string }) => {
+      return await apiRequest("/api/organization-join-requests", {
         method: "POST",
         body: data,
       });
@@ -77,11 +61,10 @@ export default function JoinTeam() {
     onSuccess: () => {
       toast({
         title: "Request sent!",
-        description: "Your join request has been sent to the team. You'll be notified when it's reviewed.",
+        description: "Your join request has been sent to the organization. You'll be notified when it's reviewed.",
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/my-join-requests'] });
-      setSelectedTeam(null);
-      setMessage("");
+      queryClient.invalidateQueries({ queryKey: ['/api/organization-join-requests'] });
+      setSelectedOrganization(null);
     },
     onError: (error: any) => {
       toast({
@@ -99,25 +82,24 @@ export default function JoinTeam() {
   };
 
   const handleJoinRequest = () => {
-    if (selectedTeam) {
+    if (selectedOrganization) {
       joinRequestMutation.mutate({
-        teamId: selectedTeam.id,
-        message: message.trim() || undefined,
+        organizationId: selectedOrganization.id,
       });
     }
   };
 
-  const getRequestStatusForTeam = (teamId: string): JoinRequest | undefined => {
-    return joinRequests?.find(req => req.teamId === teamId && req.status === 'pending');
+  const getRequestStatusForOrganization = (organizationId: string): OrganizationJoinRequest | undefined => {
+    return joinRequests?.find(req => req.organizationId === organizationId && req.status === 'pending');
   };
 
   return (
     <div className="min-h-screen bg-background p-4">
       <div className="mx-auto max-w-4xl space-y-6 py-8">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-foreground">Join a Team</h1>
+          <h1 className="text-3xl font-bold text-foreground">Join an Organization</h1>
           <p className="mt-2 text-muted-foreground">
-            Search for your team and request to join
+            Search for your organization and request to join
           </p>
         </div>
 
@@ -126,23 +108,23 @@ export default function JoinTeam() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Search className="h-5 w-5" />
-              Search for Teams
+              Search for Organizations
             </CardTitle>
             <CardDescription>
-              Enter your team name to find and join them
+              Enter your organization name to find and join them
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex gap-2">
               <div className="flex-1 space-y-2">
-                <Label htmlFor="search">Team Name</Label>
+                <Label htmlFor="search">Organization Name</Label>
                 <Input
                   id="search"
-                  placeholder="Search by team name..."
+                  placeholder="Search by organization name..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  data-testid="input-search-team"
+                  data-testid="input-search-organization"
                 />
               </div>
               <div className="flex items-end">
@@ -171,31 +153,27 @@ export default function JoinTeam() {
               <div className="space-y-3">
                 <div className="text-sm font-medium text-muted-foreground">
                   {searchMutation.data.length === 0 
-                    ? "No teams found. Try a different search term."
-                    : `Found ${searchMutation.data.length} team${searchMutation.data.length === 1 ? '' : 's'}`}
+                    ? "No organizations found. Try a different search term."
+                    : `Found ${searchMutation.data.length} organization${searchMutation.data.length === 1 ? '' : 's'}`}
                 </div>
                 <div className="grid gap-3">
-                  {searchMutation.data.map((team: Team) => {
-                    const pendingRequest = getRequestStatusForTeam(team.id);
+                  {searchMutation.data.map((org: Organization) => {
+                    const pendingRequest = getRequestStatusForOrganization(org.id);
                     return (
                       <Card
-                        key={team.id}
-                        className={`hover-elevate ${selectedTeam?.id === team.id ? 'ring-2 ring-primary' : ''}`}
-                        data-testid={`card-team-${team.id}`}
+                        key={org.id}
+                        className={`hover-elevate ${selectedOrganization?.id === org.id ? 'ring-2 ring-primary' : ''}`}
+                        data-testid={`card-organization-${org.id}`}
                       >
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1 space-y-1">
                               <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4 text-muted-foreground" />
-                                <h3 className="font-semibold">{team.name}</h3>
+                                <Building2 className="h-5 w-5 text-muted-foreground" />
+                                <h3 className="font-semibold">{org.name}</h3>
                               </div>
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <Building2 className="h-3 w-3" />
-                                <span>{team.organization.name}</span>
-                              </div>
-                              {team.description && (
-                                <p className="text-sm text-muted-foreground">{team.description}</p>
+                              {org.description && (
+                                <p className="text-sm text-muted-foreground">{org.description}</p>
                               )}
                             </div>
                             <div>
@@ -206,12 +184,12 @@ export default function JoinTeam() {
                                 </Badge>
                               ) : (
                                 <Button
-                                  onClick={() => setSelectedTeam(team)}
-                                  variant={selectedTeam?.id === team.id ? "default" : "outline"}
+                                  onClick={() => setSelectedOrganization(org)}
+                                  variant={selectedOrganization?.id === org.id ? "default" : "outline"}
                                   size="sm"
-                                  data-testid={`button-select-team-${team.id}`}
+                                  data-testid={`button-select-organization-${org.id}`}
                                 >
-                                  {selectedTeam?.id === team.id ? "Selected" : "Request to Join"}
+                                  {selectedOrganization?.id === org.id ? "Selected" : "Request to Join"}
                                 </Button>
                               )}
                             </div>
@@ -226,27 +204,16 @@ export default function JoinTeam() {
           </CardContent>
         </Card>
 
-        {/* Join Request Form */}
-        {selectedTeam && (
+        {/* Join Request Confirmation */}
+        {selectedOrganization && (
           <Card>
             <CardHeader>
-              <CardTitle>Request to Join {selectedTeam.name}</CardTitle>
+              <CardTitle>Request to Join {selectedOrganization.name}</CardTitle>
               <CardDescription>
-                Add an optional message to introduce yourself to the coaches
+                Are you sure you want to send a join request to this organization?
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="message">Message (Optional)</Label>
-                <Textarea
-                  id="message"
-                  placeholder="Tell the coaches about yourself..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  rows={4}
-                  data-testid="textarea-message"
-                />
-              </div>
               <div className="flex gap-3">
                 <Button
                   onClick={handleJoinRequest}
@@ -259,8 +226,7 @@ export default function JoinTeam() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    setSelectedTeam(null);
-                    setMessage("");
+                    setSelectedOrganization(null);
                   }}
                   data-testid="button-cancel"
                 >
@@ -277,7 +243,7 @@ export default function JoinTeam() {
             <CardHeader>
               <CardTitle>My Join Requests</CardTitle>
               <CardDescription>
-                Track the status of your team join requests
+                Track the status of your organization join requests
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -286,10 +252,7 @@ export default function JoinTeam() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div className="space-y-1">
-                        <div className="font-medium">{request.team.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {request.team.organization.name}
-                        </div>
+                        <div className="font-medium">{request.organization.name}</div>
                         <div className="text-xs text-muted-foreground">
                           Sent {new Date(request.createdAt).toLocaleDateString()}
                         </div>
