@@ -46,6 +46,7 @@ import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Onboarding from "@/pages/onboarding";
 import JoinTeam from "@/pages/join-team";
+import JoinViaInvite from "@/pages/join-via-invite";
 import Dashboard from "@/pages/dashboard";
 import Programs from "@/pages/programs";
 import Workout from "@/pages/workout";
@@ -102,6 +103,7 @@ function Router() {
               <Route path="/dashboard" component={Dashboard} />
               <Route path="/onboarding" component={Onboarding} />
               <Route path="/join-team" component={JoinTeam} />
+              <Route path="/join/:inviteCode" component={JoinViaInvite} />
               <Route path="/programs" component={Programs} />
               <Route path="/workout" component={Workout} />
               <Route path="/athletes" component={Athletes} />

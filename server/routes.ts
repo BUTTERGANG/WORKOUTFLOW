@@ -566,6 +566,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get organization by invite code
+  app.get('/api/organizations/by-invite/:inviteCode', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const org = await storage.getOrganizationByInviteCode(req.params.inviteCode);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      res.json(org);
+    } catch (error) {
+      console.error("Error fetching organization by invite code:", error);
+      res.status(500).json({ message: "Failed to fetch organization" });
+    }
+  });
+
+  // Join organization via invite code
+  app.post('/api/organizations/join/:inviteCode', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const org = await storage.getOrganizationByInviteCode(req.params.inviteCode);
+      if (!org) {
+        return res.status(404).json({ message: "Invalid invite code" });
+      }
+
+      // Check if user is already a member
+      const members = await storage.getOrganizationMembers(org.id);
+      if (members.some(m => m.userId === req.currentUser!.id)) {
+        return res.status(400).json({ message: "You are already a member of this organization" });
+      }
+
+      // Check if user already has a pending request
+      const userRequests = await storage.getUserOrganizationJoinRequests(req.currentUser!.id, 'pending');
+      const hasPending = userRequests.some(r => r.organization.id === org.id);
+      if (hasPending) {
+        return res.status(400).json({ message: "You already have a pending request for this organization" });
+      }
+
+      // Create join request
+      const request = await storage.createOrganizationJoinRequest({
+        organizationId: org.id,
+        userId: req.currentUser!.id,
+      });
+
+      res.json(request);
+    } catch (error) {
+      console.error("Error joining organization via invite code:", error);
+      res.status(500).json({ message: "Failed to join organization" });
+    }
+  });
+
   // Create an organization join request
   app.post('/api/organization-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
     try {

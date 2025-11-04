@@ -55,6 +55,16 @@ import { db } from "./db";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
 import { ConflictError, ValidationError } from "./errors";
 
+// Generate a random 8-character alphanumeric invite code
+export function generateInviteCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed ambiguous characters (0, O, 1, I)
+  let code = '';
+  for (let i = 0; i < 8; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
 export interface IStorage {
   // User operations (Email/password authentication)
   getUser(id: string): Promise<User | undefined>;
@@ -69,6 +79,8 @@ export interface IStorage {
   getOrganization(id: string): Promise<Organization | undefined>;
   getUserOrganizations(userId: string): Promise<Organization[]>;
   searchOrganizations(searchTerm: string): Promise<Organization[]>;
+  getOrganizationByInviteCode(inviteCode: string): Promise<Organization | undefined>;
+  ensureOrganizationHasInviteCode(organizationId: string): Promise<string>;
   
   // Organization membership operations
   addOrganizationMember(member: InsertOrganizationMember): Promise<OrganizationMember>;
@@ -232,9 +244,30 @@ export class DatabaseStorage implements IStorage {
   // ============================================
   
   async createOrganization(orgData: InsertOrganization): Promise<Organization> {
+    // Generate a unique invite code if not provided
+    let inviteCode = orgData.inviteCode;
+    if (!inviteCode) {
+      inviteCode = generateInviteCode();
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while (attempts < maxAttempts) {
+        const existing = await this.getOrganizationByInviteCode(inviteCode);
+        if (!existing) {
+          break;
+        }
+        inviteCode = generateInviteCode();
+        attempts++;
+      }
+      
+      if (attempts >= maxAttempts) {
+        throw new Error("Failed to generate unique invite code");
+      }
+    }
+    
     const [org] = await db
       .insert(organizations)
-      .values(orgData)
+      .values({ ...orgData, inviteCode })
       .returning();
     return org;
   }
@@ -261,6 +294,51 @@ export class DatabaseStorage implements IStorage {
       .from(organizations)
       .where(ilike(organizations.name, `%${searchTerm}%`));
     return results;
+  }
+
+  async getOrganizationByInviteCode(inviteCode: string): Promise<Organization | undefined> {
+    const [org] = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.inviteCode, inviteCode));
+    return org;
+  }
+
+  async ensureOrganizationHasInviteCode(organizationId: string): Promise<string> {
+    const org = await this.getOrganization(organizationId);
+    if (!org) {
+      throw new Error("Organization not found");
+    }
+    
+    if (org.inviteCode) {
+      return org.inviteCode;
+    }
+    
+    // Generate a unique invite code
+    let inviteCode = generateInviteCode();
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    while (attempts < maxAttempts) {
+      const existing = await this.getOrganizationByInviteCode(inviteCode);
+      if (!existing) {
+        break;
+      }
+      inviteCode = generateInviteCode();
+      attempts++;
+    }
+    
+    if (attempts >= maxAttempts) {
+      throw new Error("Failed to generate unique invite code");
+    }
+    
+    // Update the organization with the invite code
+    await db
+      .update(organizations)
+      .set({ inviteCode, updatedAt: new Date() })
+      .where(eq(organizations.id, organizationId));
+    
+    return inviteCode;
   }
 
   // ============================================

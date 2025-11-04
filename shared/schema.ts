@@ -65,11 +65,13 @@ export const organizations = pgTable("organizations", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
+  inviteCode: varchar("invite_code", { length: 8 }).unique(),
   ownerId: varchar("owner_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_organizations_owner_id").on(table.ownerId),
+  index("idx_organizations_invite_code").on(table.inviteCode),
 ]);
 
 // Junction table for organization members (primary membership system)
