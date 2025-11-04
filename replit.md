@@ -7,7 +7,7 @@ This platform is a professional weightlifting team management system designed fo
 *No specific preferences recorded yet.*
 
 ## System Architecture
-The platform is built with a modern web stack, featuring a **React frontend with TypeScript, TailwindCSS, and Shadcn UI**. The **backend is an Express.js application also written in TypeScript**. Data persistence is handled by **PostgreSQL, utilizing Drizzle ORM**. **Replit Auth** is used for authentication, supporting various SSO providers (Google, GitHub, X, Apple) and traditional email/password login.
+The platform is built with a modern web stack, featuring a **React frontend with TypeScript, TailwindCSS, and Shadcn UI**. The **backend is an Express.js application also written in TypeScript**. Data persistence is handled by **PostgreSQL, utilizing Drizzle ORM**. **Email/password authentication** is implemented using Passport.js local strategy with bcrypt password hashing.
 
 ### UI/UX Decisions
 - **Design System**: Follows Material Design 3 principles with a dark mode theme and blue accents.
@@ -19,10 +19,10 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Organization Hierarchy**: Structures data around Organizations → Teams → Athletes, with role-based access control (Admin, Head Coach, Assistant Coach, Athlete).
 - **Program Structure**: Programs are organized hierarchically into Weeks → Days → Exercises, supporting various periodization phases.
 - **Workout Logging**: Tracks workout sessions, exercise logs, and set logs, including weight, reps, RPE, and completion status.
-- **Authentication**: Integrates Replit Auth for secure sign-in, with user profiles stored in the database post-authentication. User IDs are VARCHAR to align with Replit Auth's string-based IDs.
-- **Database Schema**: Utilizes UUIDs for most entity primary keys, with foreign keys referencing `users.id` as VARCHAR.
+- **Authentication** (Nov 2025): Email/password authentication using Passport.js local strategy with bcrypt password hashing (10 salt rounds). Session-based authentication with PostgreSQL session store.
+- **Database Schema**: Utilizes UUIDs (as VARCHAR) for user IDs and most entity primary keys. User passwords stored as bcrypt hashes in `users.password_hash` field.
 - **Error Handling**: Centralized error handling system with custom error classes and Zod validation support.
-- **Security**: Implements `sanitize-html` for XSS prevention and role-based access control on all API endpoints.
+- **Security**: Implements `sanitize-html` for XSS prevention, bcrypt password hashing, and role-based access control on all API endpoints.
 - **Performance Optimizations** (Nov 2025):
   - Query optimization: Rewrote `getProgramWeeks()` using JOINs to reduce 73 queries → 1 query for 12-week programs
   - Transaction wrapping: `createCompleteProgram()` creates entire program structure atomically
@@ -73,7 +73,8 @@ The platform is built with a modern web stack, featuring a **React frontend with
 
 ## External Dependencies
 - **Database**: PostgreSQL (specifically NeonDB for serverless deployment).
-- **Authentication**: Replit Auth (for Google, GitHub, X, Apple SSO, and email/password).
+- **Authentication**: Passport.js (local strategy for email/password authentication).
+- **Password Hashing**: bcryptjs (for secure password storage).
 - **ORM**: Drizzle ORM (for database interaction).
 - **UI Components**: Shadcn UI.
 - **Styling**: TailwindCSS.
