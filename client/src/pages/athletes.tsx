@@ -245,21 +245,6 @@ export default function Athletes() {
     );
   }
 
-  if (!currentTeam) {
-    return (
-      <div className="flex h-screen items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>No Team Selected</CardTitle>
-            <CardDescription>
-              Please select a team to manage athletes.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
   // Memoize filtered members for performance
   const filteredMembers = useMemo(() => {
     if (!organizationMembers) return undefined;
@@ -285,17 +270,20 @@ export default function Athletes() {
           <div>
             <h1 className="text-3xl font-bold text-foreground">Athletes</h1>
             <p className="mt-2 text-muted-foreground">
-              Manage your team members and track their progress
+              {currentOrganization 
+                ? `Manage athletes in ${currentOrganization.name}`
+                : "Manage your team members and track their progress"}
             </p>
           </div>
 
-          <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-invite-athlete" className="gap-2">
-                <UserPlus className="h-4 w-4" />
-                Add Athlete
-              </Button>
-            </DialogTrigger>
+          {currentTeam && (
+            <Dialog open={inviteDialogOpen} onOpenChange={setInviteDialogOpen}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-invite-athlete" className="gap-2">
+                  <UserPlus className="h-4 w-4" />
+                  Add Athlete
+                </Button>
+              </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>Add Athlete to Team</DialogTitle>
@@ -330,7 +318,23 @@ export default function Athletes() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          )}
         </div>
+
+        {/* No Team Selected Info */}
+        {!currentTeam && currentOrganization && (
+          <Card className="mb-6 border-primary/50">
+            <CardContent className="flex items-center gap-3 py-4">
+              <Users className="h-5 w-5 text-primary" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Organization-wide view</p>
+                <p className="text-xs text-muted-foreground">
+                  You're viewing all athletes in {currentOrganization.name}. Select a team to manage team-specific features.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Search */}
         <div className="mb-6">
@@ -355,7 +359,7 @@ export default function Athletes() {
                 <CardTitle>Pending Join Requests</CardTitle>
               </div>
               <CardDescription>
-                Review and respond to athlete requests to join your team
+                Review and respond to athlete requests to join your organization
               </CardDescription>
             </CardHeader>
             <CardContent>

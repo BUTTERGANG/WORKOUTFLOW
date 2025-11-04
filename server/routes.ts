@@ -32,6 +32,7 @@ import {
   insertMessageSchema,
   programAssignments,
   teamJoinRequests,
+  organizationJoinRequests,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
