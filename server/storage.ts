@@ -50,10 +50,10 @@ import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
 import { ConflictError, ValidationError } from "./errors";
 
 export interface IStorage {
-  // User operations (Required for Replit Auth)
+  // User operations (Email/password authentication)
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
-  upsertUser(user: UpsertUser): Promise<User>;
+  createUser(user: UpsertUser): Promise<User>;
   updateUserRole(userId: string, role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete'): Promise<void>;
   updateUserProfile(userId: string, data: { firstName: string; lastName: string; email: string; role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete' }): Promise<void>;
   getUserTeams(userId: string): Promise<Team[]>;
@@ -169,25 +169,10 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async upsertUser(userData: UpsertUser): Promise<User> {
-    // Build update data, only including defined values to avoid overwriting existing data
-    const updateData: Partial<UpsertUser> & { updatedAt: Date } = {
-      updatedAt: new Date(),
-    };
-    
-    // Only update fields that are actually provided (not undefined)
-    if (userData.email !== undefined) updateData.email = userData.email;
-    if (userData.firstName !== undefined) updateData.firstName = userData.firstName;
-    if (userData.lastName !== undefined) updateData.lastName = userData.lastName;
-    if (userData.profileImageUrl !== undefined) updateData.profileImageUrl = userData.profileImageUrl;
-    
+  async createUser(userData: UpsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
       .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: updateData,
-      })
       .returning();
     return user;
   }

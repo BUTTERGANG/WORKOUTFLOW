@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import passport from "passport";
+import { setupLocalAuth, isAuthenticated, hashPassword } from "./localAuth";
 import { 
   requireRole, 
   verifyOrganizationAccess, 
@@ -14,6 +15,7 @@ import {
   hasTeamAccess,
   type AuthRequest,
 } from "./middleware/authorization";
+import { z } from "zod";
 import {
   insertOrganizationSchema,
   insertTeamSchema,
@@ -34,54 +36,107 @@ import {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication middleware
-  await setupAuth(app);
+  await setupLocalAuth(app);
 
   // ============================================
-  // AUTH ROUTES (Required for Replit Auth)
+  // AUTH ROUTES (Email/Password Authentication)
   // ============================================
   
+  // Get current user
   app.get('/api/auth/user', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
-      const user = await storage.getUser(userId);
-      
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
       }
       
-      res.json(user);
+      // Remove password hash before sending to client
+      const { passwordHash, ...userWithoutPassword } = req.currentUser;
+      res.json(userWithoutPassword);
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
     }
   });
 
-  app.post('/api/auth/register', isAuthenticated, async (req: AuthRequest, res) => {
+  // Register new user
+  const registerSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(6),
+    firstName: z.string().min(2),
+    lastName: z.string().min(2),
+    role: z.enum(['admin', 'head_coach', 'assistant_coach', 'athlete']),
+  });
+
+  app.post('/api/auth/register', async (req, res) => {
     try {
-      const userId = req.user!.claims.sub;
-      const { firstName, lastName, email, userType } = req.body;
+      const data = registerSchema.parse(req.body);
       
-      if (!firstName || !lastName || !email) {
-        return res.status(400).json({ message: "Missing required fields" });
+      // Check if user already exists
+      const existingUser = await storage.getUserByEmail(data.email);
+      if (existingUser) {
+        return res.status(400).json({ message: "Email already registered" });
       }
 
-      // Determine role based on userType
-      const role = userType === 'coach' ? 'head_coach' : 'athlete';
-      
-      // Update user profile
-      await storage.updateUserProfile(userId, {
-        firstName,
-        lastName,
-        email,
-        role,
+      // Hash password
+      const passwordHash = await hashPassword(data.password);
+
+      // Create user
+      const user = await storage.createUser({
+        email: data.email,
+        passwordHash,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        role: data.role,
       });
-      
-      const updatedUser = await storage.getUser(userId);
-      res.json(updatedUser);
+
+      // Log the user in automatically
+      req.login(user, (err) => {
+        if (err) {
+          console.error("Error logging in user after registration:", err);
+          return res.status(500).json({ message: "Registration successful but login failed" });
+        }
+        
+        // Remove password hash before sending to client
+        const { passwordHash: _, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+      });
     } catch (error: any) {
-      console.error("Error completing registration:", error);
-      res.status(400).json({ message: error?.message || "Failed to complete registration" });
+      console.error("Error registering user:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      res.status(400).json({ message: error?.message || "Failed to register user" });
     }
+  });
+
+  // Login
+  app.post('/api/auth/login', (req, res, next) => {
+    passport.authenticate('local', (err: any, user: any, info: any) => {
+      if (err) {
+        return res.status(500).json({ message: "Authentication error" });
+      }
+      if (!user) {
+        return res.status(401).json({ message: info?.message || "Invalid credentials" });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        // Remove password hash before sending to client
+        const { passwordHash, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+      });
+    })(req, res, next);
+  });
+
+  // Logout
+  app.post('/api/auth/logout', (req, res) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Logout failed" });
+      }
+      res.json({ message: "Logged out successfully" });
+    });
   });
 
   // ============================================
@@ -90,7 +145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       console.log("Creating organization for user:", userId, "with body:", req.body);
       const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
       const org = await storage.createOrganization(data);
@@ -109,7 +164,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const orgs = await storage.getUserOrganizations(userId);
       res.json(orgs);
     } catch (error) {
@@ -120,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/organizations/my', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const userOrgs = await storage.getUserOrganizations(userId);
       res.json(userOrgs);
     } catch (error) {
@@ -557,7 +612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const data = insertProgramSchema.parse({ ...req.body, createdBy: userId });
       
       // Verify user owns the organization or is a coach with access
@@ -591,7 +646,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const organizationId = req.query.organizationId as string;
       
       if (!organizationId) {
@@ -1070,7 +1125,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/workout-sessions', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const data = insertWorkoutSessionSchema.parse({ ...req.body, athleteId: userId });
       const session = await storage.createWorkoutSession(data);
       res.json(session);
@@ -1082,7 +1137,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/workout-sessions', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const sessions = await storage.getAthleteWorkouts(userId);
       res.json(sessions);
     } catch (error) {
@@ -1306,7 +1361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const data = insertMessageSchema.parse({ ...req.body, senderId: userId });
       const message = await storage.createMessage(data);
       res.json(message);
@@ -1318,7 +1373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/messages/conversation/:otherUserId', isAuthenticated, async (req: AuthRequest, res) => {
     try {
-      const userId = req.user!.claims.sub;
+      const userId = req.currentUser.id;
       const messages = await storage.getConversation(userId, req.params.otherUserId);
       res.json(messages);
     } catch (error) {

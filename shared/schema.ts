@@ -30,7 +30,7 @@ export const joinRequestStatusEnum = pgEnum('join_request_status', ['pending', '
 // SESSION & AUTH TABLES (Required for Replit Auth)
 // ============================================
 
-// Session storage table for Replit Auth
+// Session storage table for express-session
 export const sessions = pgTable(
   "sessions",
   {
@@ -41,12 +41,13 @@ export const sessions = pgTable(
   (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
-// User storage table (ID comes from Replit Auth as string)
+// User storage table (email/password authentication)
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey(),
-  email: varchar("email").unique(),
-  firstName: varchar("first_name"),
-  lastName: varchar("last_name"),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").notNull().unique(),
+  passwordHash: varchar("password_hash").notNull(),
+  firstName: varchar("first_name").notNull(),
+  lastName: varchar("last_name").notNull(),
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").notNull().default('athlete'),
   createdAt: timestamp("created_at").defaultNow(),
