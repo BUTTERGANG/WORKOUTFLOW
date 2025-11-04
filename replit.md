@@ -70,7 +70,8 @@ The platform is built with a modern web stack, featuring a **React frontend with
     - Auto-generated on organization creation with collision detection
     - Displayed in organization search results to disambiguate organizations with duplicate names
   - **Shareable Invite Links** (Nov 2025): Coaches can share invite links (`/join/:inviteCode`) with athletes
-    - Link displayed in Settings page with one-click copy functionality
+    - Link prominently displayed on coach dashboard with one-click copy functionality
+    - Also available in Settings page
     - Athletes can join directly via link instead of searching
     - Join still requires coach approval to maintain security
   - **Join Request Management**: Coaches can view, approve, or reject athlete join requests
