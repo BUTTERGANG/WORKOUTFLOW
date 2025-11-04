@@ -64,7 +64,15 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Program Builder**: Allows coaches to create and assign detailed training programs.
 - **Exercise Library**: Includes a pre-loaded library with support for custom exercises.
 - **Team Management**: Tools for organizing athletes and managing team memberships.
-  - **Team Search & Join** (Nov 2025): Athletes can search for teams by name and send join requests that coaches can approve/reject
+  - **Organization Search & Join** (Nov 2025): Athletes can search for organizations by name and send join requests that coaches can approve/reject
+  - **Invite Code System** (Nov 2025): Every organization has a unique 8-character invite code for easy sharing
+    - Codes use alphanumeric characters excluding ambiguous ones (0/O/1/I/l)
+    - Auto-generated on organization creation with collision detection
+    - Displayed in organization search results to disambiguate organizations with duplicate names
+  - **Shareable Invite Links** (Nov 2025): Coaches can share invite links (`/join/:inviteCode`) with athletes
+    - Link displayed in Settings page with one-click copy functionality
+    - Athletes can join directly via link instead of searching
+    - Join still requires coach approval to maintain security
   - **Join Request Management**: Coaches can view, approve, or reject athlete join requests
   - **Smart Routing**: Athletes without organizations are directed to /join-team, coaches to /onboarding
 - **Progress Analytics**: Tracks athlete performance metrics like 1RM estimates and volume.

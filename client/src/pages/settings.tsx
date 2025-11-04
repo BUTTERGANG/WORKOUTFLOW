@@ -1,8 +1,8 @@
-import { useEffect, useState, useContext } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
-import { AppContext } from "@/contexts/AppContext";
+import { useApp } from "@/contexts/AppContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import type { Organization } from "@shared/schema";
 export default function Settings() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
-  const { currentOrganization } = useContext(AppContext);
+  const { currentOrganization } = useApp();
   const [copiedCode, setCopiedCode] = useState(false);
 
   // Fetch organization details if user owns an organization
