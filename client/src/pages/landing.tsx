@@ -3,10 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function Landing() {
-  const handleLogin = () => {
-    window.location.href = '/api/login';
-  };
-
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation Header */}
@@ -20,14 +16,14 @@ export default function Landing() {
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
-              onClick={handleLogin}
+              onClick={() => window.location.href = '/login'}
               data-testid="button-header-login"
             >
               <LogIn className="mr-2 h-4 w-4" />
               Login
             </Button>
             <Button
-              onClick={handleLogin}
+              onClick={() => window.location.href = '/register'}
               data-testid="button-header-get-started"
             >
               Get Started
@@ -59,7 +55,7 @@ export default function Landing() {
             <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
               <Button
                 size="lg"
-                onClick={handleLogin}
+                onClick={() => window.location.href = '/register'}
                 className="h-12 w-full px-8 text-base font-medium sm:w-auto"
                 data-testid="button-get-started"
               >
@@ -68,7 +64,7 @@ export default function Landing() {
               <Button
                 size="lg"
                 variant="outline"
-                onClick={handleLogin}
+                onClick={() => window.location.href = '/login'}
                 className="h-12 w-full px-8 text-base font-medium sm:w-auto"
                 data-testid="button-login"
               >
@@ -196,7 +192,7 @@ export default function Landing() {
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">
             <Button
               size="lg"
-              onClick={handleLogin}
+              onClick={() => window.location.href = '/register'}
               className="h-12 w-full px-8 text-base font-medium sm:w-auto"
               data-testid="button-cta-get-started"
             >
@@ -205,7 +201,7 @@ export default function Landing() {
             <Button
               size="lg"
               variant="outline"
-              onClick={handleLogin}
+              onClick={() => window.location.href = '/login'}
               className="h-12 w-full px-8 text-base font-medium sm:w-auto"
               data-testid="button-cta-login"
             >

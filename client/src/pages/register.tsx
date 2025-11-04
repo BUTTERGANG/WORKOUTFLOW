@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,30 +10,42 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { Dumbbell } from "lucide-react";
+import { Link } from "wouter";
 
 type UserType = "athlete" | "coach";
 
 export default function Register() {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [userType, setUserType] = useState<UserType>("athlete");
 
   const registerMutation = useMutation({
-    mutationFn: async (data: { firstName: string; lastName: string; email: string; userType: UserType }) => {
+    mutationFn: async (data: { 
+      firstName: string; 
+      lastName: string; 
+      email: string; 
+      password: string;
+      role: 'athlete' | 'head_coach' | 'assistant_coach'; 
+    }) => {
       return await apiRequest("/api/auth/register", {
         method: "POST",
         body: data,
       });
     },
     onSuccess: (data, variables) => {
+      // Invalidate user query to fetch new auth state
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      
       toast({ title: "Registration successful", description: "Welcome to the platform!" });
       // Redirect athletes to join team page, coaches to onboarding
       setTimeout(() => {
-        if (variables.userType === "athlete") {
+        if (variables.role === "athlete") {
           setLocation("/join-team");
         } else {
           setLocation("/onboarding");
@@ -53,7 +65,7 @@ export default function Register() {
     e.preventDefault();
 
     // Validate required fields
-    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+    if (!firstName.trim() || !lastName.trim() || !email.trim() || !password) {
       toast({
         title: "Missing information",
         description: "Please fill in all required fields",
@@ -83,7 +95,20 @@ export default function Register() {
       return;
     }
 
-    registerMutation.mutate({ firstName, lastName, email, userType });
+    // Validate password length
+    if (password.length < 6) {
+      toast({
+        title: "Validation Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Convert userType to role
+    const role = userType === 'coach' ? 'head_coach' : 'athlete';
+
+    registerMutation.mutate({ firstName, lastName, email, password, role });
   };
 
   // If user is already registered, redirect to home (in effect to avoid render loop)
@@ -147,6 +172,20 @@ export default function Register() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="password">Password *</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Minimum 6 characters"
+                required
+                minLength={6}
+                data-testid="input-password"
+              />
+            </div>
+
             <div className="space-y-3">
               <Label>I am a... *</Label>
               <RadioGroup
@@ -183,6 +222,13 @@ export default function Register() {
             >
               {registerMutation.isPending ? "Creating Account..." : "Get Started"}
             </Button>
+
+            <div className="text-center text-sm">
+              <span className="text-muted-foreground">Already have an account? </span>
+              <Link href="/login" data-testid="link-login">
+                <span className="text-primary hover:underline">Sign in</span>
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>

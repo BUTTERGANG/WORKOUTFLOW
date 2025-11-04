@@ -42,6 +42,7 @@ function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetError
 
 // Pages
 import Landing from "@/pages/landing";
+import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Onboarding from "@/pages/onboarding";
 import JoinTeam from "@/pages/join-team";
@@ -69,23 +70,14 @@ function Router() {
     );
   }
 
-  // Show landing page if not authenticated
+  // Show landing, login, and registration pages if not authenticated
   if (!isAuthenticated) {
     return (
       <Switch>
         <Route path="/" component={Landing} />
-        <Route component={Landing} />
-      </Switch>
-    );
-  }
-
-  // Show registration if authenticated but profile incomplete
-  if (!user?.firstName || !user?.lastName) {
-    return (
-      <Switch>
-        <Route path="/" component={Register} />
+        <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
-        <Route component={Register} />
+        <Route component={Landing} />
       </Switch>
     );
   }
