@@ -72,6 +72,36 @@ export const organizations = pgTable("organizations", {
   index("idx_organizations_owner_id").on(table.ownerId),
 ]);
 
+// Junction table for organization members (primary membership system)
+export const organizationMembers = pgTable("organization_members", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: userRoleEnum("role").notNull(),
+  joinedAt: timestamp("joined_at").defaultNow(),
+}, (table) => [
+  index("idx_organization_members_organization_id").on(table.organizationId),
+  index("idx_organization_members_user_id").on(table.userId),
+  unique("unique_organization_member").on(table.organizationId, table.userId),
+]);
+
+// Organization join requests (for athletes to request to join organizations)
+export const organizationJoinRequests = pgTable("organization_join_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: joinRequestStatusEnum("status").notNull().default('pending'),
+  message: text("message"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: 'set null' }),
+  reviewedAt: timestamp("reviewed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_organization_join_requests_organization_id").on(table.organizationId),
+  index("idx_organization_join_requests_user_id").on(table.userId),
+  index("idx_organization_join_requests_status").on(table.status),
+  unique("unique_pending_org_request").on(table.organizationId, table.userId, table.status),
+]);
+
 export const teams = pgTable("teams", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
@@ -308,6 +338,7 @@ export const habitEntries = pgTable("habit_entries", {
 
 export const usersRelations = relations(users, ({ many }) => ({
   ownedOrganizations: many(organizations),
+  organizationMemberships: many(organizationMembers),
   teamMemberships: many(teamMembers),
   createdPrograms: many(programs),
   programAssignments: many(programAssignments),
@@ -321,6 +352,8 @@ export const organizationsRelations = relations(organizations, ({ one, many }) =
     fields: [organizations.ownerId],
     references: [users.id],
   }),
+  members: many(organizationMembers),
+  joinRequests: many(organizationJoinRequests),
   teams: many(teams),
   programs: many(programs),
   exercises: many(exercises),
@@ -332,6 +365,28 @@ export const teamsRelations = relations(teams, ({ one, many }) => ({
     references: [organizations.id],
   }),
   members: many(teamMembers),
+}));
+
+export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationMembers.organizationId],
+    references: [organizations.id],
+  }),
+  user: one(users, {
+    fields: [organizationMembers.userId],
+    references: [users.id],
+  }),
+}));
+
+export const organizationJoinRequestsRelations = relations(organizationJoinRequests, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationJoinRequests.organizationId],
+    references: [organizations.id],
+  }),
+  user: one(users, {
+    fields: [organizationJoinRequests.userId],
+    references: [users.id],
+  }),
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
@@ -483,6 +538,18 @@ export const insertTeamJoinRequestSchema = createInsertSchema(teamJoinRequests).
   reviewedAt: true,
 });
 
+export const insertOrganizationMemberSchema = createInsertSchema(organizationMembers).omit({
+  id: true,
+  joinedAt: true,
+});
+
+export const insertOrganizationJoinRequestSchema = createInsertSchema(organizationJoinRequests).omit({
+  id: true,
+  createdAt: true,
+  reviewedBy: true,
+  reviewedAt: true,
+});
+
 export const insertExerciseSchema = createInsertSchema(exercises).omit({
   id: true,
   createdAt: true,
@@ -547,6 +614,12 @@ export type InsertTeamMember = z.infer<typeof insertTeamMemberSchema>;
 
 export type TeamJoinRequest = typeof teamJoinRequests.$inferSelect;
 export type InsertTeamJoinRequest = z.infer<typeof insertTeamJoinRequestSchema>;
+
+export type OrganizationMember = typeof organizationMembers.$inferSelect;
+export type InsertOrganizationMember = z.infer<typeof insertOrganizationMemberSchema>;
+
+export type OrganizationJoinRequest = typeof organizationJoinRequests.$inferSelect;
+export type InsertOrganizationJoinRequest = z.infer<typeof insertOrganizationJoinRequestSchema>;
 
 export type Exercise = typeof exercises.$inferSelect;
 export type InsertExercise = z.infer<typeof insertExerciseSchema>;

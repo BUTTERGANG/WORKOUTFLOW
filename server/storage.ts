@@ -1,6 +1,8 @@
 import {
   users,
   organizations,
+  organizationMembers,
+  organizationJoinRequests,
   teams,
   teamMembers,
   teamJoinRequests,
@@ -18,6 +20,10 @@ import {
   type UpsertUser,
   type Organization,
   type InsertOrganization,
+  type OrganizationMember,
+  type InsertOrganizationMember,
+  type OrganizationJoinRequest,
+  type InsertOrganizationJoinRequest,
   type Team,
   type InsertTeam,
   type TeamMember,
@@ -62,6 +68,18 @@ export interface IStorage {
   createOrganization(org: InsertOrganization): Promise<Organization>;
   getOrganization(id: string): Promise<Organization | undefined>;
   getUserOrganizations(userId: string): Promise<Organization[]>;
+  searchOrganizations(searchTerm: string): Promise<Organization[]>;
+  
+  // Organization membership operations
+  addOrganizationMember(member: InsertOrganizationMember): Promise<OrganizationMember>;
+  getOrganizationMembers(organizationId: string): Promise<(OrganizationMember & { user: User })[]>;
+  
+  // Organization join request operations
+  createOrganizationJoinRequest(request: InsertOrganizationJoinRequest): Promise<OrganizationJoinRequest>;
+  getOrganizationJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(OrganizationJoinRequest & { user: User })[]>;
+  getUserOrganizationJoinRequests(userId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(OrganizationJoinRequest & { organization: Organization })[]>;
+  approveOrganizationJoinRequest(requestId: string, reviewedBy: string): Promise<void>;
+  rejectOrganizationJoinRequest(requestId: string, reviewedBy: string): Promise<void>;
   
   // Team operations
   createTeam(team: InsertTeam): Promise<Team>;
@@ -75,7 +93,7 @@ export interface IStorage {
   createTeamJoinRequest(request: InsertTeamJoinRequest): Promise<TeamJoinRequest>;
   getTeamJoinRequests(teamId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team & { organization: Organization } })[]>;
   getUserJoinRequests(userId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { team: Team & { organization: Organization } })[]>;
-  getOrganizationJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team })[]>;
+  getOrganizationTeamJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team })[]>;
   approveJoinRequest(requestId: string, reviewedBy: string): Promise<void>;
   rejectJoinRequest(requestId: string, reviewedBy: string): Promise<void>;
   deleteJoinRequest(requestId: string): Promise<void>;
@@ -237,6 +255,134 @@ export class DatabaseStorage implements IStorage {
     return orgs;
   }
 
+  async searchOrganizations(searchTerm: string): Promise<Organization[]> {
+    const results = await db
+      .select()
+      .from(organizations)
+      .where(ilike(organizations.name, `%${searchTerm}%`));
+    return results;
+  }
+
+  // ============================================
+  // ORGANIZATION MEMBERSHIP OPERATIONS
+  // ============================================
+
+  async addOrganizationMember(memberData: InsertOrganizationMember): Promise<OrganizationMember> {
+    const [member] = await db
+      .insert(organizationMembers)
+      .values(memberData)
+      .returning();
+    return member;
+  }
+
+  async getOrganizationMembers(organizationId: string): Promise<(OrganizationMember & { user: User })[]> {
+    const members = await db
+      .select({
+        id: organizationMembers.id,
+        organizationId: organizationMembers.organizationId,
+        userId: organizationMembers.userId,
+        role: organizationMembers.role,
+        joinedAt: organizationMembers.joinedAt,
+        user: users,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(organizationMembers.userId, users.id))
+      .where(eq(organizationMembers.organizationId, organizationId));
+    return members;
+  }
+
+  // ============================================
+  // ORGANIZATION JOIN REQUEST OPERATIONS
+  // ============================================
+
+  async createOrganizationJoinRequest(requestData: InsertOrganizationJoinRequest): Promise<OrganizationJoinRequest> {
+    const [request] = await db
+      .insert(organizationJoinRequests)
+      .values(requestData)
+      .returning();
+    return request;
+  }
+
+  async getOrganizationJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(OrganizationJoinRequest & { user: User })[]> {
+    let whereClause = eq(organizationJoinRequests.organizationId, organizationId);
+    if (status) {
+      whereClause = and(eq(organizationJoinRequests.organizationId, organizationId), eq(organizationJoinRequests.status, status)) as any;
+    }
+
+    const results = await db
+      .select()
+      .from(organizationJoinRequests)
+      .innerJoin(users, eq(organizationJoinRequests.userId, users.id))
+      .where(whereClause);
+    
+    return results.map((r: any) => ({
+      ...r.organization_join_requests,
+      user: r.users,
+    }));
+  }
+
+  async getUserOrganizationJoinRequests(userId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(OrganizationJoinRequest & { organization: Organization })[]> {
+    let whereClause = eq(organizationJoinRequests.userId, userId);
+    if (status) {
+      whereClause = and(eq(organizationJoinRequests.userId, userId), eq(organizationJoinRequests.status, status)) as any;
+    }
+
+    const results = await db
+      .select()
+      .from(organizationJoinRequests)
+      .innerJoin(organizations, eq(organizationJoinRequests.organizationId, organizations.id))
+      .where(whereClause);
+    
+    return results.map((r: any) => ({
+      ...r.organization_join_requests,
+      organization: r.organizations,
+    }));
+  }
+
+  async approveOrganizationJoinRequest(requestId: string, reviewedBy: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // Get the request first
+      const [request] = await tx
+        .select()
+        .from(organizationJoinRequests)
+        .where(eq(organizationJoinRequests.id, requestId));
+      
+      if (!request) {
+        throw new Error('Organization join request not found');
+      }
+
+      // Update status to approved
+      await tx
+        .update(organizationJoinRequests)
+        .set({
+          status: 'approved',
+          reviewedBy,
+          reviewedAt: new Date(),
+        })
+        .where(eq(organizationJoinRequests.id, requestId));
+
+      // Add the user as an organization member
+      await tx
+        .insert(organizationMembers)
+        .values({
+          organizationId: request.organizationId,
+          userId: request.userId,
+          role: 'athlete',
+        });
+    });
+  }
+
+  async rejectOrganizationJoinRequest(requestId: string, reviewedBy: string): Promise<void> {
+    await db
+      .update(organizationJoinRequests)
+      .set({
+        status: 'rejected',
+        reviewedBy,
+        reviewedAt: new Date(),
+      })
+      .where(eq(organizationJoinRequests.id, requestId));
+  }
+
   // ============================================
   // TEAM OPERATIONS
   // ============================================
@@ -364,7 +510,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getOrganizationJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team })[]> {
+  async getOrganizationTeamJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team })[]> {
     let whereClause = eq(teams.organizationId, organizationId);
     if (status) {
       whereClause = and(eq(teams.organizationId, organizationId), eq(teamJoinRequests.status, status)) as any;
