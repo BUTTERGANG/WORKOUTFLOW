@@ -1,17 +1,33 @@
-import { useEffect } from "react";
+import { useEffect, useState, useContext } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
+import { AppContext } from "@/contexts/AppContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LogOut, User, Shield } from "lucide-react";
+import { LogOut, User, Shield, Link2, Copy, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import type { Organization } from "@shared/schema";
 
 export default function Settings() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth();
+  const { currentOrganization } = useContext(AppContext);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  // Fetch organization details if user owns an organization
+  const { data: organization } = useQuery<Organization>({
+    queryKey: ['/api/organizations', currentOrganization?.id],
+    enabled: !!currentOrganization?.id,
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${currentOrganization!.id}`);
+      if (!res.ok) throw new Error('Failed to fetch organization');
+      return res.json();
+    },
+  });
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -54,6 +70,29 @@ export default function Settings() {
       word.charAt(0).toUpperCase() + word.slice(1)
     ).join(' ');
   };
+
+  const copyInviteLink = async () => {
+    if (organization?.inviteCode) {
+      const inviteLink = `${window.location.origin}/join/${organization.inviteCode}`;
+      try {
+        await navigator.clipboard.writeText(inviteLink);
+        setCopiedCode(true);
+        toast({
+          title: "Copied!",
+          description: "Invite link copied to clipboard",
+        });
+        setTimeout(() => setCopiedCode(false), 2000);
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to copy link",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const isCoach = user?.role === 'admin' || user?.role === 'head_coach' || user?.role === 'assistant_coach';
 
   return (
     <div className="h-full overflow-auto">
@@ -165,6 +204,72 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Organization Invite Link - Only for Coaches */}
+          {isCoach && organization && organization.inviteCode && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Link2 className="h-5 w-5" />
+                  Organization Invite Link
+                </CardTitle>
+                <CardDescription>
+                  Share this link with athletes to invite them to your organization
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Invite Code</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={organization.inviteCode}
+                      readOnly
+                      className="font-mono"
+                      data-testid="input-invite-code"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={copyInviteLink}
+                      data-testid="button-copy-invite"
+                    >
+                      {copiedCode ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Full Invite Link</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={`${window.location.origin}/join/${organization.inviteCode}`}
+                      readOnly
+                      className="text-sm"
+                      data-testid="input-invite-link"
+                    />
+                    <Button
+                      onClick={copyInviteLink}
+                      data-testid="button-copy-link"
+                    >
+                      {copiedCode ? (
+                        <>
+                          <Check className="mr-2 h-4 w-4" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy Link
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Athletes can use this link to send a join request to your organization. You'll need to approve their request before they can access the organization.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Account Actions */}
           <Card>
