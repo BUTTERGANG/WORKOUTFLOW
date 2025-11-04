@@ -99,6 +99,7 @@ function Router() {
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/" component={Dashboard} />
+              <Route path="/dashboard" component={Dashboard} />
               <Route path="/onboarding" component={Onboarding} />
               <Route path="/join-team" component={JoinTeam} />
               <Route path="/programs" component={Programs} />

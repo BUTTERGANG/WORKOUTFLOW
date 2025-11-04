@@ -915,23 +915,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
+      console.log("[DEBUG] Creating program assignment:", req.body);
+      console.log("[DEBUG] Current user:", req.currentUser!.id, "role:", req.currentUser!.role);
+
       const data = insertProgramAssignmentSchema.parse({ ...req.body, assignedBy: req.currentUser!.id });
+      console.log("[DEBUG] Parsed data:", data);
 
       // Verify user is a coach or org owner
       const program = await storage.getProgram(data.programId);
       if (!program) {
+        console.log("[DEBUG] Program not found:", data.programId);
         return res.status(404).json({ message: "Program not found" });
       }
+      console.log("[DEBUG] Program found:", program.id, "org:", program.organizationId);
 
       const org = await storage.getOrganization(program.organizationId);
       if (!org) {
+        console.log("[DEBUG] Organization not found:", program.organizationId);
         return res.status(404).json({ message: "Organization not found" });
       }
+      console.log("[DEBUG] Organization found:", org.id, "owner:", org.ownerId);
 
       const isOwner = org.ownerId === req.currentUser!.id;
       const isCoach = req.currentUser!.role === 'admin' || 
                      req.currentUser!.role === 'head_coach' || 
                      req.currentUser!.role === 'assistant_coach';
+
+      console.log("[DEBUG] isOwner:", isOwner, "isCoach:", isCoach);
 
       if (!isOwner && !isCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches or org owners can assign programs" });
@@ -939,15 +949,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Verify coach has access to both program and athlete
       const hasAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
+      console.log("[DEBUG] hasOrganizationAccess:", hasAccess);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
 
       const assignment = await storage.createProgramAssignment(data);
+      console.log("[DEBUG] Assignment created:", assignment.id);
       res.json(assignment);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating program assignment:", error);
-      res.status(400).json({ message: "Failed to create program assignment" });
+      console.error("Error message:", error?.message);
+      console.error("Error stack:", error?.stack);
+      res.status(400).json({ message: error?.message || "Failed to create program assignment" });
     }
   });
 

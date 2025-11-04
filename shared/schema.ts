@@ -509,6 +509,8 @@ export const insertProgramExerciseSchema = createInsertSchema(programExercises).
 export const insertProgramAssignmentSchema = createInsertSchema(programAssignments).omit({
   id: true,
   assignedAt: true,
+}).extend({
+  startDate: z.union([z.date(), z.string().transform(str => new Date(str))]),
 });
 
 export const insertWorkoutSessionSchema = createInsertSchema(workoutSessions).omit({
