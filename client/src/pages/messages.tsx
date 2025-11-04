@@ -42,10 +42,12 @@ export default function Messages() {
 
   const handleSendMessage = () => {
     if (!messageText.trim()) return;
-    
+
+    // TODO: Implement actual messaging functionality
     toast({
-      title: "Message sent",
-      description: "Your message has been delivered.",
+      title: "Coming Soon",
+      description: "Messaging feature is under development and will be available soon.",
+      variant: "default",
     });
     setMessageText("");
   };
@@ -65,25 +67,28 @@ export default function Messages() {
           {/* Messages Container */}
           <Card className="flex h-[calc(100vh-16rem)] flex-col">
             <CardHeader className="border-b border-border">
-              <CardTitle className="text-lg">Conversation</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                Conversation
+                <span className="text-xs font-normal text-muted-foreground bg-muted px-2 py-1 rounded">Coming Soon</span>
+              </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-1 flex-col p-0">
               {/* Messages Area */}
               <ScrollArea className="flex-1 p-4">
                 <div className="flex flex-col items-center justify-center py-12">
                   <MessageSquare className="mb-4 h-16 w-16 text-muted-foreground" />
-                  <h3 className="mb-2 text-xl font-semibold">No messages yet</h3>
-                  <p className="text-center text-muted-foreground">
-                    Start a conversation by sending a message
+                  <h3 className="mb-2 text-xl font-semibold">Messaging Coming Soon</h3>
+                  <p className="text-center text-muted-foreground max-w-sm">
+                    Direct messaging between coaches and athletes will be available in a future update.
                   </p>
                 </div>
 
-                {/* Sample Message - Hidden for now */}
+                {/* Sample Message Template - Hidden */}
                 <div className="hidden space-y-4">
-                  {/* Coach Message (left) */}
+                  {/* Coach Message Template (left) */}
                   <div className="flex gap-3">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src="" style={{ objectFit: 'cover' }} />
+                      <AvatarImage src="" />
                       <AvatarFallback>C</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
@@ -94,10 +99,10 @@ export default function Messages() {
                     </div>
                   </div>
 
-                  {/* Athlete Message (right) */}
+                  {/* Athlete Message Template (right) */}
                   <div className="flex flex-row-reverse gap-3">
                     <Avatar className="h-8 w-8">
-                      <AvatarImage src="" style={{ objectFit: 'cover' }} />
+                      <AvatarImage src="" />
                       <AvatarFallback>A</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">

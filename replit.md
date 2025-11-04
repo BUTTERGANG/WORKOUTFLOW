@@ -49,6 +49,16 @@ The platform is built with a modern web stack, featuring a **React frontend with
   - Fixed main content area to use `flex-1` and `overflow-auto` for proper flex layout with sidebar
   - Ensures sidebar and main content display side by side without clipping or off-center positioning
   - Moved `SidebarProvider` to only wrap authenticated routes, allowing registration and landing pages to render centered without sidebar interference
+- **Form Validation Enhancements** (Nov 2025):
+  - **Registration**: Added email format validation with regex pattern, name length validation (minimum 2 characters)
+  - **Onboarding**: Added comprehensive validation for organization/team names (3-100 character length requirements)
+  - **Navigation**: Replaced unsafe `window.location.href` redirects with wouter's `setLocation()` for proper client-side routing
+  - **Context Usage**: Replaced unsafe `localStorage` access in onboarding with `AppContext`'s `currentOrganization` for reliable state management
+- **Performance Improvements** (Nov 2025):
+  - **Athletes Page**: Added `useMemo` optimization for team member filtering to prevent unnecessary re-renders
+- **UX Improvements** (Nov 2025):
+  - **Messages**: Replaced misleading "Message sent" toast with honest "Coming Soon" badge to set proper user expectations
+  - Updated messaging empty state to clearly communicate that feature is under development
 
 ### Feature Specifications
 - **Program Builder**: Allows coaches to create and assign detailed training programs.

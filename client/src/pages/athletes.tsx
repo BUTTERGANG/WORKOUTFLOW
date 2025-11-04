@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useApp } from "@/contexts/AppContext";
@@ -260,12 +260,17 @@ export default function Athletes() {
     );
   }
 
-  const filteredMembers = teamMembers?.filter((member) =>
-    member.user &&
-    (member.user.firstName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.user.lastName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.user.email?.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Memoize filtered members for performance
+  const filteredMembers = useMemo(() => {
+    if (!teamMembers) return undefined;
+    const query = searchQuery.toLowerCase();
+    return teamMembers.filter((member) =>
+      member.user &&
+      (member.user.firstName?.toLowerCase().includes(query) ||
+        member.user.lastName?.toLowerCase().includes(query) ||
+        member.user.email?.toLowerCase().includes(query))
+    );
+  }, [teamMembers, searchQuery]);
 
   // Get assignment for athlete
   const getAthleteAssignment = (athleteId: string) => {
@@ -379,7 +384,7 @@ export default function Athletes() {
                           </p>
                         )}
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Requested {new Date(request.createdAt).toLocaleDateString()}
+                          Requested {request.createdAt ? new Date(request.createdAt).toLocaleDateString() : 'Recently'}
                         </p>
                       </div>
                     </div>

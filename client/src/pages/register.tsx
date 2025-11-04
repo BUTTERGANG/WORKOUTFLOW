@@ -32,11 +32,13 @@ export default function Register() {
     onSuccess: (data, variables) => {
       toast({ title: "Registration successful", description: "Welcome to the platform!" });
       // Redirect athletes to join team page, coaches to onboarding
-      if (variables.userType === "athlete") {
-        window.location.href = "/join-team";
-      } else {
-        window.location.href = "/onboarding";
-      }
+      setTimeout(() => {
+        if (variables.userType === "athlete") {
+          setLocation("/join-team");
+        } else {
+          setLocation("/onboarding");
+        }
+      }, 500);
     },
     onError: (error: any) => {
       toast({
@@ -49,6 +51,8 @@ export default function Register() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate required fields
     if (!firstName.trim() || !lastName.trim() || !email.trim()) {
       toast({
         title: "Missing information",
@@ -57,6 +61,28 @@ export default function Register() {
       });
       return;
     }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate name lengths
+    if (firstName.trim().length < 2 || lastName.trim().length < 2) {
+      toast({
+        title: "Validation Error",
+        description: "First and last name must be at least 2 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
     registerMutation.mutate({ firstName, lastName, email, userType });
   };
 

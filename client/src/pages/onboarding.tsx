@@ -13,7 +13,7 @@ import type { Organization, Team } from "@shared/schema";
 
 export default function Onboarding() {
   const [, setLocation] = useLocation();
-  const { setCurrentOrganization, setCurrentTeam } = useApp();
+  const { currentOrganization, setCurrentOrganization, setCurrentTeam } = useApp();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [orgName, setOrgName] = useState("");
@@ -74,19 +74,76 @@ export default function Onboarding() {
 
   const handleCreateOrg = (e: React.FormEvent) => {
     e.preventDefault();
-    if (orgName.trim()) {
-      createOrgMutation.mutate(orgName);
+    // Validate organization name
+    const trimmedName = orgName.trim();
+    if (!trimmedName) {
+      toast({
+        title: "Validation Error",
+        description: "Organization name is required",
+        variant: "destructive",
+      });
+      return;
     }
+    if (trimmedName.length < 3) {
+      toast({
+        title: "Validation Error",
+        description: "Organization name must be at least 3 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (trimmedName.length > 100) {
+      toast({
+        title: "Validation Error",
+        description: "Organization name must be less than 100 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+    createOrgMutation.mutate(trimmedName);
   };
 
   const handleCreateTeam = (e: React.FormEvent) => {
     e.preventDefault();
-    if (teamName.trim()) {
-      const org = JSON.parse(localStorage.getItem('currentOrganization') || '{}');
-      if (org.id) {
-        createTeamMutation.mutate({ organizationId: org.id, name: teamName });
-      }
+    // Validate team name
+    const trimmedName = teamName.trim();
+    if (!trimmedName) {
+      toast({
+        title: "Validation Error",
+        description: "Team name is required",
+        variant: "destructive",
+      });
+      return;
     }
+    if (trimmedName.length < 3) {
+      toast({
+        title: "Validation Error",
+        description: "Team name must be at least 3 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (trimmedName.length > 100) {
+      toast({
+        title: "Validation Error",
+        description: "Team name must be less than 100 characters",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Use currentOrganization from context instead of unsafe localStorage access
+    if (!currentOrganization?.id) {
+      toast({
+        title: "Error",
+        description: "No organization found. Please create an organization first.",
+        variant: "destructive",
+      });
+      setStep('org');
+      return;
+    }
+
+    createTeamMutation.mutate({ organizationId: currentOrganization.id, name: trimmedName });
   };
 
   return (
