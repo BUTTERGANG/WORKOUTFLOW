@@ -14,6 +14,10 @@ import { AlertTriangle } from "lucide-react";
 
 // Error Fallback Component
 function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+  const handleGoHome = () => {
+    window.location.href = '/';
+  };
+
   return (
     <div className="flex h-screen items-center justify-center p-4">
       <div className="text-center max-w-md">
@@ -24,7 +28,7 @@ function ErrorFallback({ error, resetErrorBoundary }: { error: Error; resetError
           {error.message}
         </pre>
         <div className="flex gap-2 justify-center">
-          <Button onClick={() => window.location.href = '/'} variant="outline">
+          <Button onClick={handleGoHome} variant="outline">
             Go Home
           </Button>
           <Button onClick={resetErrorBoundary}>

@@ -25,7 +25,7 @@ export default function Dashboard() {
     if (!isLoading && !isAuthenticated) {
       toast({
         title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
+        description: "Redirecting to login...",
         variant: "destructive",
       });
       setTimeout(() => {
