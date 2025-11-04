@@ -177,7 +177,14 @@ export default function Settings() {
             <CardContent>
               <Button
                 variant="destructive"
-                onClick={() => window.location.href = '/api/logout'}
+                onClick={async () => {
+                  try {
+                    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                    window.location.href = '/';
+                  } catch (error) {
+                    console.error('Logout failed:', error);
+                  }
+                }}
                 data-testid="button-logout"
                 className="gap-2"
               >

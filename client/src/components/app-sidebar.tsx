@@ -183,11 +183,20 @@ export function AppSidebar() {
                 </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <a href="/api/logout" className="text-destructive" data-testid="link-logout">
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Log out
-                </a>
+              <DropdownMenuItem 
+                className="text-destructive cursor-pointer" 
+                data-testid="link-logout"
+                onClick={async () => {
+                  try {
+                    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                    window.location.href = '/';
+                  } catch (error) {
+                    console.error('Logout failed:', error);
+                  }
+                }}
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Log out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
