@@ -6,11 +6,11 @@ import * as schema from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
 
-if (!process.env.NEON_DATABASE) {
+if (!process.env.DATABASE_URL) {
   throw new Error(
-    "NEON_DATABASE must be set. Did you forget to add the NeonDB secret?",
+    "DATABASE_URL must be set. Did you forget to provision the database?",
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.NEON_DATABASE });
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle({ client: pool, schema });
