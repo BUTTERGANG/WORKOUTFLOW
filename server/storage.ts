@@ -138,7 +138,7 @@ export interface IStorage {
   
   // Program assignment operations
   createProgramAssignment(assignment: InsertProgramAssignment): Promise<ProgramAssignment>;
-  getAthleteAssignments(athleteId: string): Promise<ProgramAssignment[]>;
+  getAthleteAssignments(athleteId: string): Promise<(ProgramAssignment & { program: Program })[]>;
   getProgramAssignments(programId: string): Promise<(ProgramAssignment & { athlete: User })[]>;
   deleteProgramAssignment(id: string): Promise<void>;
   
@@ -1052,12 +1052,29 @@ export class DatabaseStorage implements IStorage {
     return assignment;
   }
 
-  async getAthleteAssignments(athleteId: string): Promise<ProgramAssignment[]> {
-    return await db
+  async getAthleteAssignments(athleteId: string): Promise<(ProgramAssignment & { program: Program })[]> {
+    const assignments = await db
       .select()
       .from(programAssignments)
       .where(eq(programAssignments.athleteId, athleteId))
       .orderBy(desc(programAssignments.assignedAt));
+
+    // Fetch program details for each assignment
+    const assignmentsWithPrograms = await Promise.all(
+      assignments.map(async (assignment) => {
+        const [program] = await db
+          .select()
+          .from(programs)
+          .where(eq(programs.id, assignment.programId));
+
+        return {
+          ...assignment,
+          program,
+        };
+      })
+    );
+
+    return assignmentsWithPrograms;
   }
 
   async getProgramAssignments(programId: string): Promise<(ProgramAssignment & { athlete: User })[]> {

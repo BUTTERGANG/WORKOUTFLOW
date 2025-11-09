@@ -1197,6 +1197,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
 
+      // CRITICAL FIX: Verify athlete is also part of the organization
+      const athleteHasAccess = await hasOrganizationAccess(data.athleteId, program.organizationId);
+      if (!athleteHasAccess) {
+        return res.status(403).json({
+          message: "Forbidden: athlete is not a member of this organization"
+        });
+      }
+
+      // Check if athlete already has an active assignment for this program
+      const existingAssignments = await storage.getAthleteAssignments(data.athleteId);
+      const hasActiveAssignment = existingAssignments.some(
+        a => a.programId === data.programId && a.status === 'active'
+      );
+
+      if (hasActiveAssignment) {
+        return res.status(400).json({
+          message: "Athlete already has an active assignment for this program"
+        });
+      }
+
       const assignment = await storage.createProgramAssignment(data);
       console.log("[DEBUG] Assignment created:", assignment.id);
       res.json(assignment);
@@ -1205,6 +1225,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error message:", error?.message);
       console.error("Error stack:", error?.stack);
       res.status(400).json({ message: error?.message || "Failed to create program assignment" });
+    }
+  });
+
+  // Get program assignments by team (for athletes page)
+  app.get('/api/program-assignments', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const teamId = req.query.teamId as string | undefined;
+
+      if (!teamId) {
+        return res.status(400).json({ message: "Team ID required" });
+      }
+
+      // Verify user has access to this team
+      const hasAccess = await hasTeamAccess(req.currentUser.id, teamId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Forbidden: not a member of this team" });
+      }
+
+      // Get all team members (only athletes)
+      const teamMembers = await storage.getTeamMembers(teamId);
+      const athleteIds = teamMembers
+        .filter(m => m.user.role === 'athlete')
+        .map(m => m.userId);
+
+      if (athleteIds.length === 0) {
+        return res.json([]);
+      }
+
+      // Get assignments for all athletes in the team
+      const allAssignments = await Promise.all(
+        athleteIds.map(athleteId => storage.getAthleteAssignments(athleteId))
+      );
+
+      // Flatten the results
+      const assignments = allAssignments.flat();
+
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error fetching team program assignments:", error);
+      res.status(500).json({ message: "Failed to fetch program assignments" });
     }
   });
 
