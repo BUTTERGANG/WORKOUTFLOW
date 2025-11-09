@@ -253,7 +253,8 @@ export const workoutSessions = pgTable("workout_sessions", {
   overallRpe: integer("overall_rpe"), // 1-10 scale
   notes: text("notes"),
 }, (table) => [
-  index("idx_workout_sessions_athlete_id").on(table.athleteId),
+  // Composite index covers both athlete-only and athlete+date queries
+  index("idx_workout_sessions_athlete_started").on(table.athleteId, table.startedAt),
   index("idx_workout_sessions_program_day_id").on(table.programDayId),
   index("idx_workout_sessions_scheduled_date").on(table.scheduledDate),
   index("idx_workout_sessions_completed_at").on(table.completedAt),
@@ -280,7 +281,8 @@ export const setLogs = pgTable("set_logs", {
   completed: boolean("completed").default(true),
   timestamp: timestamp("timestamp").defaultNow(),
 }, (table) => [
-  index("idx_set_logs_exercise_log_id").on(table.exerciseLogId),
+  // Composite index covers both exercise_log and exercise_log+timestamp queries
+  index("idx_set_logs_exercise_log_timestamp").on(table.exerciseLogId, table.timestamp),
 ]);
 
 // ============================================
