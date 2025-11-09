@@ -2116,6 +2116,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // MESSAGING ROUTES
+  // ============================================
+
+  // Send a message
+  app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const data = insertMessageSchema.parse({ ...req.body, senderId: req.currentUser.id });
+      
+      // Verify sender and recipient are in the same organization
+      const senderTeams = await storage.getUserTeams(req.currentUser.id);
+      const recipientTeams = await storage.getUserTeams(data.recipientId);
+      
+      const senderOrgIds = new Set(senderTeams.map(t => t.organizationId));
+      const recipientOrgIds = new Set(recipientTeams.map(t => t.organizationId));
+      
+      const hasSharedOrg = [...senderOrgIds].some(orgId => recipientOrgIds.has(orgId));
+      
+      if (!hasSharedOrg) {
+        return res.status(403).json({ message: "Forbidden: can only message users in same organization" });
+      }
+
+      const message = await storage.createMessage(data);
+      res.json(message);
+    } catch (error) {
+      console.error("Error creating message:", error);
+      res.status(400).json({ message: "Failed to create message" });
+    }
+  });
+
+  // Get conversation with a user
+  app.get('/api/messages/:userId', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Verify both users are in the same organization
+      const currentUserTeams = await storage.getUserTeams(req.currentUser.id);
+      const otherUserTeams = await storage.getUserTeams(req.params.userId);
+      
+      const currentUserOrgIds = new Set(currentUserTeams.map(t => t.organizationId));
+      const otherUserOrgIds = new Set(otherUserTeams.map(t => t.organizationId));
+      
+      const hasSharedOrg = [...currentUserOrgIds].some(orgId => otherUserOrgIds.has(orgId));
+      
+      if (!hasSharedOrg) {
+        return res.status(403).json({ message: "Forbidden: can only view messages with users in same organization" });
+      }
+
+      const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ message: "Failed to fetch conversation" });
+    }
+  });
+
+  // Mark message as read
+  app.put('/api/messages/:id/read', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // TODO: Add verification that current user is the recipient
+      await storage.markMessageAsRead(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error marking message as read:", error);
+      res.status(500).json({ message: "Failed to mark message as read" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
