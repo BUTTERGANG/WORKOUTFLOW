@@ -1062,28 +1062,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAthleteAssignments(athleteId: string): Promise<(ProgramAssignment & { program: Program })[]> {
-    const assignments = await db
-      .select()
+    return await db
+      .select({
+        id: programAssignments.id,
+        programId: programAssignments.programId,
+        athleteId: programAssignments.athleteId,
+        startDate: programAssignments.startDate,
+        status: programAssignments.status,
+        assignedBy: programAssignments.assignedBy,
+        assignedAt: programAssignments.assignedAt,
+        program: programs,
+      })
       .from(programAssignments)
+      .innerJoin(programs, eq(programAssignments.programId, programs.id))
       .where(eq(programAssignments.athleteId, athleteId))
       .orderBy(desc(programAssignments.assignedAt));
-
-    // Fetch program details for each assignment
-    const assignmentsWithPrograms = await Promise.all(
-      assignments.map(async (assignment) => {
-        const [program] = await db
-          .select()
-          .from(programs)
-          .where(eq(programs.id, assignment.programId));
-
-        return {
-          ...assignment,
-          program,
-        };
-      })
-    );
-
-    return assignmentsWithPrograms;
   }
 
   async getProgramAssignments(programId: string): Promise<(ProgramAssignment & { athlete: User })[]> {
