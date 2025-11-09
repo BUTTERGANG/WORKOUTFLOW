@@ -1425,6 +1425,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get available template programs for self-assignment
+  app.get('/api/programs/available', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // Get user's organizations
+      const userOrgs = await storage.getUserOrganizations(req.currentUser.id);
+      const orgIds = userOrgs.map(org => org.id);
+
+      if (orgIds.length === 0) {
+        return res.json([]);
+      }
+
+      // Get all template programs from user's organizations
+      const allPrograms = await Promise.all(
+        orgIds.map(orgId => storage.getOrganizationPrograms(orgId))
+      );
+
+      // Flatten and filter for templates
+      const templatePrograms = allPrograms
+        .flat()
+        .filter(p => p.isTemplate);
+
+      res.json(templatePrograms);
+    } catch (error) {
+      console.error("Error fetching available programs:", error);
+      res.status(500).json({ message: "Failed to fetch available programs" });
+    }
+  });
+
+  // Self-assign a template program
+  app.post('/api/program-assignments/self-assign', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const { programId } = req.body;
+      
+      if (!programId) {
+        return res.status(400).json({ message: "Program ID required" });
+      }
+
+      // Verify program exists and is a template
+      const program = await storage.getProgram(programId);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      if (!program.isTemplate) {
+        return res.status(403).json({ message: "Only template programs can be self-assigned" });
+      }
+
+      // Verify user is in the program's organization
+      const hasAccess = await hasOrganizationAccess(req.currentUser.id, program.organizationId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Forbidden: program not in your organization" });
+      }
+
+      // Check if user already has an active assignment for this program
+      const existingAssignments = await storage.getAthleteAssignments(req.currentUser.id);
+      const hasActiveAssignment = existingAssignments.some(
+        a => a.programId === programId && a.status === 'active'
+      );
+
+      if (hasActiveAssignment) {
+        return res.status(400).json({
+          message: "You already have an active assignment for this program"
+        });
+      }
+
+      // Create self-assignment
+      const assignment = await storage.createProgramAssignment({
+        programId,
+        athleteId: req.currentUser.id,
+        assignedBy: req.currentUser.id, // Self-assigned
+        status: 'active',
+        assignedAt: new Date(),
+      });
+
+      res.json(assignment);
+    } catch (error) {
+      console.error("Error self-assigning program:", error);
+      res.status(400).json({ message: "Failed to self-assign program" });
+    }
+  });
+
   // ============================================
   // WORKOUT LOGGING ROUTES
   // ============================================

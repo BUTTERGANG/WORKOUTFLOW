@@ -66,6 +66,39 @@ export default function Programs() {
     enabled: !!currentOrganization,
   });
 
+  // Athlete self-assignment hooks (must be at top level)
+  const isCoach = user ? (user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach') : false;
+  
+  const { data: availablePrograms, isLoading: loadingAvailable } = useQuery<Program[]>({
+    queryKey: ['/api/programs/available'],
+    queryFn: async () => {
+      const res = await fetch('/api/programs/available', {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch available programs');
+      return res.json();
+    },
+    enabled: !isCoach && !!user,
+  });
+
+  const selfAssignMutation = useMutation({
+    mutationFn: async (programId: string) =>
+      apiRequest('/api/program-assignments/self-assign', { method: 'POST', body: { programId } }),
+    onSuccess: () => {
+      toast({ title: "Success", description: "Program assigned successfully" });
+      if (user) {
+        queryClient.invalidateQueries({ queryKey: ['/api/athletes', user.id, 'assignments'] });
+      }
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to assign program", 
+        variant: "destructive" 
+      });
+    },
+  });
+
   const createProgramMutation = useMutation({
     mutationFn: async (data: { name: string; description: string; durationWeeks: number; organizationId: string }) => {
       // Create the program
@@ -142,19 +175,81 @@ export default function Programs() {
 
   if (!user) return null;
 
-  const isCoach = user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach';
-
+  // Athlete view - Self-assignment
   if (!isCoach) {
     return (
-      <div className="flex h-screen items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>
-              Only coaches can access program management.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+      <div className="h-full overflow-auto">
+        <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+          <div className="mb-6">
+            <h1 className="text-3xl font-bold text-foreground">Available Programs</h1>
+            <p className="mt-2 text-muted-foreground">
+              Browse and assign training programs created by your coaches
+            </p>
+          </div>
+
+          {loadingAvailable ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                <p className="text-muted-foreground">Loading programs...</p>
+              </div>
+            </div>
+          ) : !availablePrograms || availablePrograms.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <FileText className="mb-4 h-16 w-16 text-muted-foreground" />
+                <h3 className="mb-2 text-xl font-semibold">No Programs Available</h3>
+                <p className="text-center text-muted-foreground max-w-sm">
+                  Your coaches haven't created any template programs yet. Check back later!
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {availablePrograms.map((program) => (
+                <Card key={program.id} className="flex flex-col">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span className="truncate">{program.name}</span>
+                      <Badge variant="secondary">{program.durationWeeks}w</Badge>
+                    </CardTitle>
+                    {program.description && (
+                      <CardDescription className="line-clamp-2">
+                        {program.description}
+                      </CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4" />
+                        <span>{program.durationWeeks} weeks</span>
+                      </div>
+                      {program.phase && (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {program.phase}
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                  <CardContent className="pt-0">
+                    <Button
+                      onClick={() => selfAssignMutation.mutate(program.id)}
+                      disabled={selfAssignMutation.isPending}
+                      className="w-full"
+                      data-testid={`button-self-assign-${program.id}`}
+                    >
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Assign to Me
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
