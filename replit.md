@@ -29,8 +29,10 @@ The platform is built with a modern web stack, featuring a **React frontend with
   - **Compression** (Nov 2025): Response compression middleware active for improved performance
 - **Performance Optimizations** (Nov 2025):
   - Query optimization: Rewrote `getProgramWeeks()` using JOINs to reduce 73 queries → 1 query for 12-week programs
+  - N+1 query fixes: Rewrote `getAthleteAssignments()` using single JOIN query instead of Promise.all loop
   - Transaction wrapping: `createCompleteProgram()` creates entire program structure atomically
   - Cascade deletes: Comprehensive cascade delete for programs, organizations, and teams
+  - Dashboard statistics: Uses COUNT(DISTINCT) aggregations to prevent double-counting athletes in multiple teams
 - **Data Integrity Validation** (Nov 2025):
   - Prevents duplicate week numbers within programs
   - Prevents duplicate day numbers within weeks
@@ -94,6 +96,13 @@ The platform is built with a modern web stack, featuring a **React frontend with
   - **Frontend**: Athlete view on Programs page shows available template programs in cards with self-assignment button
   - **Security**: Organization-based access control, template-only restriction, duplicate assignment prevention
   - **UX**: Loading states, empty states for no programs, toast notifications for success/error
+- **Dashboard Statistics** (Nov 2025): Real-time metrics for coaches and athletes
+  - **Coach View**: Organization-level statistics including active programs, total athletes, completed workouts, 7-day completion rate, and weekly volume (total reps)
+  - **Athlete View**: Personal statistics including assigned programs and workout completion metrics
+  - **Backend**: GET /api/statistics with role-based data filtering, organization authorization checks
+  - **Security**: 401 for unauthenticated, 400 for missing organizationId (coaches), 403 for unauthorized organization access
+  - **Performance**: COUNT(DISTINCT) aggregations prevent double-counting athletes in multiple teams
+  - **UX**: Loading states, safe fallbacks for missing data, real-time updates on dashboard
 
 ## External Dependencies
 - **Database**: PostgreSQL (specifically NeonDB for serverless deployment).
