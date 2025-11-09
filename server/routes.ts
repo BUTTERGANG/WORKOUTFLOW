@@ -2283,6 +2283,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ============================================
+  // STATISTICS ROUTES
+  // ============================================
+
+  // Get dashboard statistics
+  app.get('/api/statistics', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const isCoachRole = isCoach(req.currentUser);
+
+      if (isCoachRole) {
+        // Coach needs to provide organizationId
+        const organizationId = req.query.organizationId as string;
+        if (!organizationId) {
+          return res.status(400).json({ message: "organizationId is required for coaches" });
+        }
+
+        const stats = await storage.getCoachStatistics(req.currentUser.id, organizationId);
+        return res.json(stats);
+      } else {
+        // Athletes use their own ID
+        const stats = await storage.getAthleteStatistics(req.currentUser.id);
+        return res.json(stats);
+      }
+    } catch (error: any) {
+      // Handle authorization errors with 403
+      if (error.message && error.message.includes('does not have access')) {
+        return res.status(403).json({ message: "Forbidden: You do not have access to this organization" });
+      }
+      console.error("Error fetching statistics:", error);
+      res.status(500).json({ message: "Failed to fetch statistics" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

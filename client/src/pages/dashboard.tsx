@@ -18,6 +18,10 @@ export default function Dashboard() {
   const { currentOrganization, setCurrentOrganization } = useApp();
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Compute roles early for use in queries (MUST be before any conditional hooks)
+  const isCoach = user ? (user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach') : false;
+  const isAthlete = user ? user.role === 'athlete' : false;
+
   // Fetch user's organizations
   const { data: organizations, isLoading: orgsLoading } = useQuery<Organization[]>({
     queryKey: ['/api/organizations/my'],
@@ -31,6 +35,26 @@ export default function Dashboard() {
     queryFn: async () => {
       const res = await fetch(`/api/organizations/${currentOrganization!.id}`);
       if (!res.ok) throw new Error('Failed to fetch organization');
+      return res.json();
+    },
+  });
+
+  // Fetch statistics
+  const { data: stats } = useQuery<{
+    programs: number;
+    athletes?: number;
+    workouts?: number;
+    completionRate: number;
+    weeklyVolume: number;
+  }>({
+    queryKey: ['/api/statistics', currentOrganization?.id],
+    enabled: !!user && (isCoach ? !!currentOrganization?.id : true),
+    queryFn: async () => {
+      const url = isCoach 
+        ? `/api/statistics?organizationId=${currentOrganization!.id}`
+        : '/api/statistics';
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch statistics');
       return res.json();
     },
   });
@@ -83,9 +107,6 @@ export default function Dashboard() {
 
   if (!user) return null;
 
-  const isCoach = user.role === 'admin' || user.role === 'head_coach' || user.role === 'assistant_coach';
-  const isAthlete = user.role === 'athlete';
-
   const copyInviteLink = async () => {
     if (organizationDetails?.inviteCode) {
       const inviteLink = `${window.location.origin}/join/${organizationDetails.inviteCode}`;
@@ -128,7 +149,7 @@ export default function Dashboard() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-programs">0</div>
+              <div className="text-2xl font-bold" data-testid="stat-programs">{stats?.programs ?? 0}</div>
               <p className="text-xs text-muted-foreground">
                 {isCoach ? "programs created" : "assigned to you"}
               </p>
@@ -143,7 +164,9 @@ export default function Dashboard() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-athletes">0</div>
+              <div className="text-2xl font-bold" data-testid="stat-athletes">
+                {isCoach ? (stats?.athletes ?? 0) : (stats?.workouts ?? 0)}
+              </div>
               <p className="text-xs text-muted-foreground">
                 {isCoach ? "total athletes" : "completed this week"}
               </p>
@@ -156,7 +179,7 @@ export default function Dashboard() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-completion">0%</div>
+              <div className="text-2xl font-bold" data-testid="stat-completion">{stats?.completionRate ?? 0}%</div>
               <p className="text-xs text-muted-foreground">last 7 days</p>
             </CardContent>
           </Card>
@@ -167,7 +190,7 @@ export default function Dashboard() {
               <Activity className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-volume">0</div>
+              <div className="text-2xl font-bold" data-testid="stat-volume">{stats?.weeklyVolume ?? 0}</div>
               <p className="text-xs text-muted-foreground">total reps</p>
             </CardContent>
           </Card>

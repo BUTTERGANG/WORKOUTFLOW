@@ -1539,6 +1539,172 @@ export class DatabaseStorage implements IStorage {
       .where(eq(programExercises.id, id));
     return exercise;
   }
+
+  // ============================================
+  // STATISTICS OPERATIONS
+  // ============================================
+
+  async getCoachStatistics(userId: string, organizationId: string) {
+    // Verify user has access to this organization (either through teams or as org member/owner)
+    const userTeams = await this.getUserTeams(userId);
+    const hasTeamAccess = userTeams.some(team => team.organizationId === organizationId);
+    
+    if (!hasTeamAccess) {
+      // Check if user is an organization member (owner/creator)
+      const orgMembers = await db
+        .select()
+        .from(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.organizationId, organizationId),
+            eq(organizationMembers.userId, userId)
+          )
+        );
+      
+      if (orgMembers.length === 0) {
+        throw new Error('User does not have access to this organization');
+      }
+    }
+
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const programCount = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(programs)
+      .where(eq(programs.organizationId, organizationId));
+
+    // Use COUNT(DISTINCT) to avoid double-counting athletes in multiple teams
+    const athleteCount = await db
+      .select({ count: sql<number>`count(distinct ${users.id})::int` })
+      .from(teamMembers)
+      .innerJoin(users, eq(teamMembers.userId, users.id))
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(
+        and(
+          eq(teams.organizationId, organizationId),
+          eq(users.role, 'athlete')
+        )
+      );
+
+    // Use DISTINCT to avoid double-counting workouts for athletes in multiple teams
+    const completionStats = await db
+      .select({
+        total: sql<number>`count(distinct ${workoutSessions.id})::int`,
+        completed: sql<number>`count(distinct ${workoutSessions.id}) filter (where ${workoutSessions.completedAt} is not null)::int`,
+      })
+      .from(workoutSessions)
+      .innerJoin(users, eq(workoutSessions.athleteId, users.id))
+      .innerJoin(teamMembers, eq(users.id, teamMembers.userId))
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(
+        and(
+          eq(teams.organizationId, organizationId),
+          sql`${workoutSessions.startedAt} >= ${sevenDaysAgo}`
+        )
+      );
+
+    // Use DISTINCT on set_logs.id to avoid double-counting
+    const volumeStats = await db
+      .select({
+        totalReps: sql<number>`coalesce(sum(distinct_reps.reps), 0)::int`,
+      })
+      .from(
+        db
+          .selectDistinct({
+            id: setLogs.id,
+            reps: setLogs.reps,
+          })
+          .from(setLogs)
+          .innerJoin(exerciseLogs, eq(setLogs.exerciseLogId, exerciseLogs.id))
+          .innerJoin(workoutSessions, eq(exerciseLogs.sessionId, workoutSessions.id))
+          .innerJoin(users, eq(workoutSessions.athleteId, users.id))
+          .innerJoin(teamMembers, eq(users.id, teamMembers.userId))
+          .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+          .where(
+            and(
+              eq(teams.organizationId, organizationId),
+              sql`${setLogs.timestamp} >= ${sevenDaysAgo}`
+            )
+          )
+          .as('distinct_reps')
+      );
+
+    const total = completionStats[0]?.total || 0;
+    const completed = completionStats[0]?.completed || 0;
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    return {
+      programs: programCount[0]?.count || 0,
+      athletes: athleteCount[0]?.count || 0,
+      completionRate,
+      weeklyVolume: volumeStats[0]?.totalReps || 0,
+    };
+  }
+
+  async getAthleteStatistics(userId: string) {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const assignmentCount = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(programAssignments)
+      .where(
+        and(
+          eq(programAssignments.athleteId, userId),
+          eq(programAssignments.status, 'active')
+        )
+      );
+
+    const workoutCount = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(workoutSessions)
+      .where(
+        and(
+          eq(workoutSessions.athleteId, userId),
+          sql`${workoutSessions.completedAt} is not null`,
+          sql`${workoutSessions.completedAt} >= ${sevenDaysAgo}`
+        )
+      );
+
+    const completionStats = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        completed: sql<number>`count(*) filter (where ${workoutSessions.completedAt} is not null)::int`,
+      })
+      .from(workoutSessions)
+      .where(
+        and(
+          eq(workoutSessions.athleteId, userId),
+          sql`${workoutSessions.startedAt} >= ${sevenDaysAgo}`
+        )
+      );
+
+    const volumeStats = await db
+      .select({
+        totalReps: sql<number>`coalesce(sum(${setLogs.reps}), 0)::int`,
+      })
+      .from(setLogs)
+      .innerJoin(exerciseLogs, eq(setLogs.exerciseLogId, exerciseLogs.id))
+      .innerJoin(workoutSessions, eq(exerciseLogs.sessionId, workoutSessions.id))
+      .where(
+        and(
+          eq(workoutSessions.athleteId, userId),
+          sql`${setLogs.timestamp} >= ${sevenDaysAgo}`
+        )
+      );
+
+    const total = completionStats[0]?.total || 0;
+    const completed = completionStats[0]?.completed || 0;
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    return {
+      programs: assignmentCount[0]?.count || 0,
+      workouts: workoutCount[0]?.count || 0,
+      completionRate,
+      weeklyVolume: volumeStats[0]?.totalReps || 0,
+    };
+  }
 }
 
 export const storage = new DatabaseStorage();
