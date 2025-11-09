@@ -23,6 +23,10 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Database Schema**: Utilizes UUIDs (as VARCHAR) for user IDs and most entity primary keys. User passwords stored as bcrypt hashes in `users.password_hash` field.
 - **Error Handling**: Centralized error handling system with custom error classes and Zod validation support.
 - **Security**: Implements `sanitize-html` for XSS prevention, bcrypt password hashing, and role-based access control on all API endpoints.
+  - **Rate Limiting** (Nov 2025): Auth endpoints (/api/login, /api/register) protected with rate limiting (5 attempts per 15 minutes per IP) using express-rate-limit middleware
+  - **Crypto-Safe Invite Codes** (Nov 2025): Organization invite codes generated using crypto.randomBytes for cryptographic security with collision detection
+  - **Session Security** (Nov 2025): Session cookies configured with SameSite: 'lax' to prevent CSRF attacks
+  - **Compression** (Nov 2025): Response compression middleware active for improved performance
 - **Performance Optimizations** (Nov 2025):
   - Query optimization: Rewrote `getProgramWeeks()` using JOINs to reduce 73 queries → 1 query for 12-week programs
   - Transaction wrapping: `createCompleteProgram()` creates entire program structure atomically
@@ -79,6 +83,17 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Progress Analytics**: Tracks athlete performance metrics like 1RM estimates and volume.
 - **Workout Logging**: Mobile-optimized interface for athletes to log sets, reps, and RPE.
 - **Tools for Athletes**: Includes a rest timer and plate calculator.
+- **Messaging System** (Nov 2025): Organization-wide messaging between members
+  - **Backend**: REST endpoints for sending messages, fetching conversations, and marking messages as read
+  - **Frontend**: Member list, conversation view, message composition
+  - **Real-time**: Polling-based updates (5-second intervals) for new messages
+  - **Security**: Enforces shared-organization membership between sender and recipient
+  - **UX**: Empty states, loading states, "Coming Soon" badge for transparency
+- **Self-Assignment** (Nov 2025): Athletes can browse and self-assign template programs
+  - **Backend**: GET /api/programs/available (fetches template programs from user's organizations) and POST /api/program-assignments/self-assign (creates self-assignment with security checks)
+  - **Frontend**: Athlete view on Programs page shows available template programs in cards with self-assignment button
+  - **Security**: Organization-based access control, template-only restriction, duplicate assignment prevention
+  - **UX**: Loading states, empty states for no programs, toast notifications for success/error
 
 ## External Dependencies
 - **Database**: PostgreSQL (specifically NeonDB for serverless deployment).
