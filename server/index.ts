@@ -1,10 +1,14 @@
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { sanitizeInput } from "./middleware/sanitization";
 import { handleError } from "./errors";
 
 const app = express();
+
+// Add compression middleware (60-70% bandwidth reduction)
+app.use(compression());
 
 declare module 'http' {
   interface IncomingMessage {

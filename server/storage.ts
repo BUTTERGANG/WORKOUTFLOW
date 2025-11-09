@@ -56,12 +56,21 @@ import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
 import { ConflictError, ValidationError } from "./errors";
 
 // Generate a random 8-character alphanumeric invite code
+// Crypto-safe invite code generation
+import { randomBytes } from 'crypto';
+
 export function generateInviteCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed ambiguous characters (0, O, 1, I)
   let code = '';
+  
+  // Use cryptographically secure random bytes
+  const bytes = randomBytes(8);
+  
   for (let i = 0; i < 8; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+    // Use modulo to map bytes to character set
+    code += chars.charAt(bytes[i] % chars.length);
   }
+  
   return code;
 }
 

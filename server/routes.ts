@@ -15,6 +15,8 @@ import {
   hasTeamAccess,
   type AuthRequest,
 } from "./middleware/authorization";
+import { isCoach, isHeadCoachOrAdmin } from "./utils/roleHelpers";
+import { rateLimit } from "./middleware/rateLimit";
 import { z } from "zod";
 import {
   insertOrganizationSchema,
@@ -68,7 +70,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     role: z.enum(['admin', 'head_coach', 'assistant_coach', 'athlete']),
   });
 
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', rateLimit(5, 15 * 60 * 1000), async (req, res) => {
     try {
       const data = registerSchema.parse(req.body);
       
@@ -111,7 +113,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Login
-  app.post('/api/auth/login', (req, res, next) => {
+  app.post('/api/auth/login', rateLimit(5, 15 * 60 * 1000), (req, res, next) => {
     passport.authenticate('local', (err: any, user: any, info: any) => {
       if (err) {
         return res.status(500).json({ message: "Authentication error" });
@@ -246,17 +248,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const isOwner = org.ownerId === req.currentUser!.id;
-      const isCoach = req.currentUser!.role === 'admin' || 
-                     req.currentUser!.role === 'head_coach' || 
-                     req.currentUser!.role === 'assistant_coach';
+      const userIsCoach = isCoach(req.currentUser!);
       
       // Coaches must be members of the organization
-      if (!isOwner && isCoach) {
+      if (!isOwner && userIsCoach) {
         const hasAccess = await hasOrganizationAccess(req.currentUser!.id, data.organizationId);
         if (!hasAccess) {
           return res.status(403).json({ message: "Forbidden: not a member of this organization" });
         }
-      } else if (!isOwner && !isCoach) {
+      } else if (!isOwner && !userIsCoach) {
         return res.status(403).json({ message: "Forbidden: only organization owners or coaches can create teams" });
       }
       
@@ -1158,41 +1158,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      console.log("[DEBUG] Creating program assignment:", req.body);
-      console.log("[DEBUG] Current user:", req.currentUser!.id, "role:", req.currentUser!.role);
-
       const data = insertProgramAssignmentSchema.parse({ ...req.body, assignedBy: req.currentUser!.id });
-      console.log("[DEBUG] Parsed data:", data);
 
       // Verify user is a coach or org owner
       const program = await storage.getProgram(data.programId);
       if (!program) {
-        console.log("[DEBUG] Program not found:", data.programId);
         return res.status(404).json({ message: "Program not found" });
       }
-      console.log("[DEBUG] Program found:", program.id, "org:", program.organizationId);
 
       const org = await storage.getOrganization(program.organizationId);
       if (!org) {
-        console.log("[DEBUG] Organization not found:", program.organizationId);
         return res.status(404).json({ message: "Organization not found" });
       }
-      console.log("[DEBUG] Organization found:", org.id, "owner:", org.ownerId);
 
       const isOwner = org.ownerId === req.currentUser!.id;
-      const isCoach = req.currentUser!.role === 'admin' || 
-                     req.currentUser!.role === 'head_coach' || 
-                     req.currentUser!.role === 'assistant_coach';
+      const userIsCoach = isCoach(req.currentUser!);
 
-      console.log("[DEBUG] isOwner:", isOwner, "isCoach:", isCoach);
-
-      if (!isOwner && !isCoach) {
+      if (!isOwner && !userIsCoach) {
         return res.status(403).json({ message: "Forbidden: only coaches or org owners can assign programs" });
       }
 
       // Verify coach has access to both program and athlete
       const hasAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
-      console.log("[DEBUG] hasOrganizationAccess:", hasAccess);
       if (!hasAccess) {
         return res.status(403).json({ message: "Forbidden: program not in your organization" });
       }
@@ -1218,7 +1205,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const assignment = await storage.createProgramAssignment(data);
-      console.log("[DEBUG] Assignment created:", assignment.id);
       res.json(assignment);
     } catch (error: any) {
       console.error("Error creating program assignment:", error);
