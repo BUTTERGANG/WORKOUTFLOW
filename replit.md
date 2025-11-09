@@ -33,6 +33,7 @@ The platform is built with a modern web stack, featuring a **React frontend with
   - Transaction wrapping: `createCompleteProgram()` creates entire program structure atomically
   - Cascade deletes: Comprehensive cascade delete for programs, organizations, and teams
   - Dashboard statistics: Uses COUNT(DISTINCT) aggregations to prevent double-counting athletes in multiple teams
+  - Database indexing: Composite btree indexes on `workout_sessions(athlete_id, started_at)` and `set_logs(exercise_log_id, timestamp)` optimize statistics and volume queries; removed redundant single-column indexes to reduce write overhead
 - **Data Integrity Validation** (Nov 2025):
   - Prevents duplicate week numbers within programs
   - Prevents duplicate day numbers within weeks
