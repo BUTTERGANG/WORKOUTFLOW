@@ -52,7 +52,7 @@ import {
   type InsertMessage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, inArray, type SQL } from "drizzle-orm";
 import { ConflictError, ValidationError } from "./errors";
 
 // Generate a random 8-character alphanumeric invite code
@@ -391,9 +391,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOrganizationJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(OrganizationJoinRequest & { user: User })[]> {
-    let whereClause = eq(organizationJoinRequests.organizationId, organizationId);
+    let whereClause: SQL<unknown> | undefined = eq(organizationJoinRequests.organizationId, organizationId);
     if (status) {
-      whereClause = and(eq(organizationJoinRequests.organizationId, organizationId), eq(organizationJoinRequests.status, status)) as any;
+      whereClause = and(eq(organizationJoinRequests.organizationId, organizationId), eq(organizationJoinRequests.status, status));
     }
 
     const results = await db
@@ -409,9 +409,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserOrganizationJoinRequests(userId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(OrganizationJoinRequest & { organization: Organization })[]> {
-    let whereClause = eq(organizationJoinRequests.userId, userId);
+    let whereClause: SQL<unknown> | undefined = eq(organizationJoinRequests.userId, userId);
     if (status) {
-      whereClause = and(eq(organizationJoinRequests.userId, userId), eq(organizationJoinRequests.status, status)) as any;
+      whereClause = and(eq(organizationJoinRequests.userId, userId), eq(organizationJoinRequests.status, status));
     }
 
     const results = await db
@@ -552,9 +552,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getTeamJoinRequests(teamId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team & { organization: Organization } })[]> {
-    let whereClause = eq(teamJoinRequests.teamId, teamId);
+    let whereClause: SQL<unknown> | undefined = eq(teamJoinRequests.teamId, teamId);
     if (status) {
-      whereClause = and(eq(teamJoinRequests.teamId, teamId), eq(teamJoinRequests.status, status)) as any;
+      whereClause = and(eq(teamJoinRequests.teamId, teamId), eq(teamJoinRequests.status, status));
     }
 
     const results = await db
@@ -576,9 +576,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getUserJoinRequests(userId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { team: Team & { organization: Organization } })[]> {
-    let whereClause = eq(teamJoinRequests.userId, userId);
+    let whereClause: SQL<unknown> | undefined = eq(teamJoinRequests.userId, userId);
     if (status) {
-      whereClause = and(eq(teamJoinRequests.userId, userId), eq(teamJoinRequests.status, status)) as any;
+      whereClause = and(eq(teamJoinRequests.userId, userId), eq(teamJoinRequests.status, status));
     }
 
     const results = await db
@@ -598,9 +598,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getOrganizationTeamJoinRequests(organizationId: string, status?: 'pending' | 'approved' | 'rejected'): Promise<(TeamJoinRequest & { user: User; team: Team })[]> {
-    let whereClause = eq(teams.organizationId, organizationId);
+    let whereClause: SQL<unknown> | undefined = eq(teams.organizationId, organizationId);
     if (status) {
-      whereClause = and(eq(teams.organizationId, organizationId), eq(teamJoinRequests.status, status)) as any;
+      whereClause = and(eq(teams.organizationId, organizationId), eq(teamJoinRequests.status, status));
     }
 
     const results = await db
@@ -1547,24 +1547,56 @@ export class DatabaseStorage implements IStorage {
   // ============================================
 
   async getCoachStatistics(userId: string, organizationId: string) {
-    // Verify user has access to this organization (either through teams or as org member/owner)
-    const userTeams = await this.getUserTeams(userId);
-    const hasTeamAccess = userTeams.some(team => team.organizationId === organizationId);
+    // FIRST: Verify user is a coach/admin (defense in depth)
+    const user = await this.getUser(userId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    const isCoachRole = user.role === 'admin' ||
+                        user.role === 'head_coach' ||
+                        user.role === 'assistant_coach';
+
+    if (!isCoachRole) {
+      throw new Error('Forbidden: Only coaches and admins can access coach statistics');
+    }
+
+    // SECOND: Verify user has access to this organization (optimized query)
+    const hasTeamAccess = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(
+        and(
+          eq(teamMembers.userId, userId),
+          eq(teams.organizationId, organizationId)
+        )
+      )
+      .then(result => (result[0]?.count || 0) > 0);
     
     if (!hasTeamAccess) {
-      // Check if user is an organization member (owner/creator)
-      const orgMembers = await db
-        .select()
-        .from(organizationMembers)
-        .where(
-          and(
-            eq(organizationMembers.organizationId, organizationId),
-            eq(organizationMembers.userId, userId)
-          )
-        );
-      
-      if (orgMembers.length === 0) {
-        throw new Error('User does not have access to this organization');
+      // Check if user is the organization owner OR organization member
+      const org = await this.getOrganization(organizationId);
+      if (!org) {
+        throw new Error('Organization not found');
+      }
+
+      const isOwner = org.ownerId === userId;
+
+      if (!isOwner) {
+        const orgMembers = await db
+          .select()
+          .from(organizationMembers)
+          .where(
+            and(
+              eq(organizationMembers.organizationId, organizationId),
+              eq(organizationMembers.userId, userId)
+            )
+          );
+        
+        if (orgMembers.length === 0) {
+          throw new Error('User does not have access to this organization');
+        }
       }
     }
 
