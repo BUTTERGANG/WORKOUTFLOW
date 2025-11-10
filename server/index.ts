@@ -1,9 +1,11 @@
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
+import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { sanitizeInput } from "./middleware/sanitization";
 import { handleError } from "./errors";
+import { generateToken, doubleCsrfProtection } from "./middleware/csrf";
 
 const app = express();
 
@@ -21,6 +23,9 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+
+// Cookie parser MUST come after express.json/urlencoded
+app.use(cookieParser());
 
 // Add sanitization middleware BEFORE routes
 app.use(sanitizeInput);
@@ -56,6 +61,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // CSRF token endpoint - must be BEFORE registerRoutes
+  // This endpoint must be unprotected so clients can get initial token
+  app.get('/api/csrf-token', (req, res) => {
+    const token = generateToken(req, res);
+    res.json({ csrfToken: token });
+  });
+
   const server = await registerRoutes(app);
 
   // Use centralized error handler from errors.ts
