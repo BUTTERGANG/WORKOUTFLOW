@@ -27,6 +27,10 @@ The platform is built with a modern web stack, featuring a **React frontend with
   - **Crypto-Safe Invite Codes** (Nov 2025): Organization invite codes generated using crypto.randomBytes for cryptographic security with collision detection
   - **Session Security** (Nov 2025): Session cookies configured with SameSite: 'lax' to prevent CSRF attacks
   - **Compression** (Nov 2025): Response compression middleware active for improved performance
+  - **Message Security** (Nov 10, 2025): Message read endpoint now verifies user is the recipient before marking message as read, preventing cross-user tampering
+  - **Transaction Atomicity** (Nov 10, 2025): Join request approval wrapped in database transaction to eliminate race conditions between status update and team member creation
+  - **Statistics Authorization** (Nov 10, 2025): Coach statistics endpoint validates user role (defense in depth) and optimized organization access check with direct JOIN query instead of N+1 getUserTeams() call
+  - **Type Safety** (Nov 10, 2025): Removed all unsafe `as any` type casts (5 occurrences) and replaced with proper `SQL<unknown> | undefined` typing for improved type safety
 - **Performance Optimizations** (Nov 2025):
   - Query optimization: Rewrote `getProgramWeeks()` using JOINs to reduce 73 queries → 1 query for 12-week programs
   - N+1 query fixes: Rewrote `getAthleteAssignments()` using single JOIN query instead of Promise.all loop
