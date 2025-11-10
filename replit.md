@@ -19,10 +19,12 @@ The platform is built with a modern web stack, featuring a **React frontend with
 - **Organization Hierarchy**: Structures data around Organizations → Teams → Athletes, with role-based access control (Admin, Head Coach, Assistant Coach, Athlete).
 - **Program Structure**: Programs are organized hierarchically into Weeks → Days → Exercises, supporting various periodization phases.
 - **Workout Logging**: Tracks workout sessions, exercise logs, and set logs, including weight, reps, RPE, and completion status.
-- **Authentication** (Nov 2025): Email/password authentication using Passport.js local strategy with bcrypt password hashing (10 salt rounds). Session-based authentication with PostgreSQL session store.
+- **Authentication** (Nov 2025): Email/password authentication using Passport.js local strategy with bcrypt password hashing (10 salt rounds). Session-based authentication with PostgreSQL session store. **12-character minimum password policy** (Nov 10, 2025) enforced client-side and server-side following NIST SP 800-63B guidelines (prioritizes length over complexity).
 - **Database Schema**: Utilizes UUIDs (as VARCHAR) for user IDs and most entity primary keys. User passwords stored as bcrypt hashes in `users.password_hash` field.
-- **Error Handling**: Centralized error handling system with custom error classes and Zod validation support.
+- **Error Handling**: Centralized error handling system with custom error classes and Zod validation support. **Database error masking** (Nov 10, 2025) prevents exposure of schema details (table names, column names, constraints) in production while maintaining detailed errors for development debugging.
 - **Security**: Implements `sanitize-html` for XSS prevention, bcrypt password hashing, and role-based access control on all API endpoints.
+  - **Structured Logger** (Nov 10, 2025): Enterprise-grade logging system (`server/logger.ts`) with automatic recursive redaction of 15+ sensitive patterns (passwords, tokens, API keys, session IDs, authorization headers, cookies, etc.). Replaced all 74 console.error calls with secure logger.error to eliminate accidental secret exposure in logs.
+  - **HTTP Security Headers** (Nov 10, 2025): Helmet middleware configured for defense-in-depth protection against clickjacking (X-Frame-Options), MIME sniffing (X-Content-Type-Options), HTTPS enforcement (Strict-Transport-Security), and other common web vulnerabilities. CSP and COEP intentionally disabled for Vite dev server compatibility.
   - **Rate Limiting** (Nov 2025): Auth endpoints (/api/login, /api/register) protected with rate limiting (5 attempts per 15 minutes per IP) using express-rate-limit middleware
   - **Crypto-Safe Invite Codes** (Nov 2025): Organization invite codes generated using crypto.randomBytes for cryptographic security with collision detection
   - **Session Security** (Nov 2025): Session cookies configured with SameSite: 'lax' to prevent CSRF attacks
