@@ -618,34 +618,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async approveJoinRequest(requestId: string, reviewedBy: string): Promise<void> {
-    // Get the request first
-    const [request] = await db
-      .select()
-      .from(teamJoinRequests)
-      .where(eq(teamJoinRequests.id, requestId));
-    
-    if (!request) {
-      throw new Error('Join request not found');
-    }
+    await db.transaction(async (tx) => {
+      // Get the request first
+      const [request] = await tx
+        .select()
+        .from(teamJoinRequests)
+        .where(eq(teamJoinRequests.id, requestId));
+      
+      if (!request) {
+        throw new Error('Join request not found');
+      }
 
-    // Update status to approved
-    await db
-      .update(teamJoinRequests)
-      .set({
-        status: 'approved',
-        reviewedBy,
-        reviewedAt: new Date(),
-      })
-      .where(eq(teamJoinRequests.id, requestId));
+      // Update status to approved
+      await tx
+        .update(teamJoinRequests)
+        .set({
+          status: 'approved',
+          reviewedBy,
+          reviewedAt: new Date(),
+        })
+        .where(eq(teamJoinRequests.id, requestId));
 
-    // Add the user as a team member
-    await db
-      .insert(teamMembers)
-      .values({
-        teamId: request.teamId,
-        userId: request.userId,
-        role: 'athlete',
-      });
+      // Add the user as a team member
+      await tx
+        .insert(teamMembers)
+        .values({
+          teamId: request.teamId,
+          userId: request.userId,
+          role: 'athlete',
+        });
+    });
   }
 
   async rejectJoinRequest(requestId: string, reviewedBy: string): Promise<void> {

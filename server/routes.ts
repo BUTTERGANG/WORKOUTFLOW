@@ -2274,7 +2274,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      // TODO: Add verification that current user is the recipient
+      // Verify current user is the recipient
+      const message = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.id, req.params.id))
+        .limit(1);
+
+      if (!message[0]) {
+        return res.status(404).json({ message: "Message not found" });
+      }
+
+      if (message[0].recipientId !== req.currentUser.id) {
+        return res.status(403).json({ message: "Forbidden: You can only mark your own messages as read" });
+      }
+
       await storage.markMessageAsRead(req.params.id);
       res.status(204).send();
     } catch (error) {
