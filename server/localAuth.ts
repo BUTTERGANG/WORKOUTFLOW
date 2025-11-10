@@ -7,6 +7,7 @@ import connectPg from "connect-pg-simple";
 import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import type { User } from "@shared/schema";
+import { logger } from "./logger";
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
@@ -113,7 +114,7 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     
     return next();
   } catch (error) {
-    console.error("Error fetching user context:", error);
+    logger.error("Error fetching user context", error);
     return res.status(500).json({ message: "Failed to load user context" });
   }
 };

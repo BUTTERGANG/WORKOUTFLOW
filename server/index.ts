@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { sanitizeInput } from "./middleware/sanitization";
@@ -8,6 +9,12 @@ import { handleError } from "./errors";
 import { generateToken, doubleCsrfProtection } from "./middleware/csrf";
 
 const app = express();
+
+// Security headers with helmet (OWASP recommended)
+app.use(helmet({
+  contentSecurityPolicy: false, // Disable for now to avoid breaking Vite dev server
+  crossOriginEmbedderPolicy: false, // Allow loading external resources
+}));
 
 // Add compression middleware (60-70% bandwidth reduction)
 app.use(compression());

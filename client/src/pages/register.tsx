@@ -95,11 +95,11 @@ export default function Register() {
       return;
     }
 
-    // Validate password length
-    if (password.length < 6) {
+    // Validate password length (NIST SP 800-63B: length over complexity)
+    if (password.length < 12) {
       toast({
         title: "Validation Error",
-        description: "Password must be at least 6 characters",
+        description: "Password must be at least 12 characters",
         variant: "destructive",
       });
       return;

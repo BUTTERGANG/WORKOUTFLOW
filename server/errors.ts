@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { ZodError } from "zod";
+import { logger } from "./logger";
 
 // Custom error classes
 export class AppError extends Error {
@@ -45,7 +46,7 @@ export class ConflictError extends AppError {
 
 // Error handler utility
 export function handleError(error: unknown, res: Response): void {
-  console.error("Error:", error);
+  logger.error("Request error", error);
 
   // Handle Zod validation errors
   if (error instanceof ZodError) {
@@ -68,27 +69,31 @@ export function handleError(error: unknown, res: Response): void {
   // Handle database errors
   if (error && typeof error === 'object' && 'code' in error) {
     const dbError = error as { code: string; detail?: string };
+    const isDevelopment = process.env.NODE_ENV === 'development';
     
     // PostgreSQL error codes
     switch (dbError.code) {
       case '23505': // Unique violation
         res.status(409).json({
           error: "Duplicate entry",
-          details: dbError.detail,
+          // Only expose database details in development
+          ...(isDevelopment && dbError.detail && { details: dbError.detail }),
         });
         return;
       
       case '23503': // Foreign key violation
         res.status(400).json({
           error: "Referenced resource does not exist",
-          details: dbError.detail,
+          // Only expose database details in development
+          ...(isDevelopment && dbError.detail && { details: dbError.detail }),
         });
         return;
       
       case '23502': // Not null violation
         res.status(400).json({
           error: "Required field is missing",
-          details: dbError.detail,
+          // Only expose database details in development
+          ...(isDevelopment && dbError.detail && { details: dbError.detail }),
         });
         return;
     }

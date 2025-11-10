@@ -5,6 +5,7 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import passport from "passport";
 import { setupLocalAuth, isAuthenticated, hashPassword } from "./localAuth";
+import { logger } from "./logger";
 import { 
   requireRole, 
   verifyOrganizationAccess, 
@@ -56,7 +57,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { passwordHash, ...userWithoutPassword } = req.currentUser;
       res.json(userWithoutPassword);
     } catch (error) {
-      console.error("Error fetching user:", error);
+      logger.error("fetching user", error);
       res.status(500).json({ message: "Failed to fetch user" });
     }
   });
@@ -64,7 +65,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register new user
   const registerSchema = z.object({
     email: z.string().email(),
-    password: z.string().min(6),
+    password: z.string().min(12, "Password must be at least 12 characters"), // NIST SP 800-63B: length over complexity
     firstName: z.string().min(2),
     lastName: z.string().min(2),
     role: z.enum(['admin', 'head_coach', 'assistant_coach', 'athlete']),
@@ -95,7 +96,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Log the user in automatically
       req.login(user, (err) => {
         if (err) {
-          console.error("Error logging in user after registration:", err);
+          logger.error("logging in user after registration", err);
           return res.status(500).json({ message: "Registration successful but login failed" });
         }
         
@@ -104,11 +105,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json(userWithoutPassword);
       });
     } catch (error: any) {
-      console.error("Error registering user:", error);
+      logger.error("registering user", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Validation error", errors: error.errors });
       }
-      res.status(400).json({ message: error?.message || "Failed to register user" });
+      // Don't expose error.message - it may contain database details
+      res.status(400).json({ message: "Failed to register user" });
     }
   });
 
@@ -166,9 +168,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("Organization created successfully:", org.id);
       res.json(org);
     } catch (error: any) {
-      console.error("Error creating organization:", error);
-      console.error("Error stack:", error?.stack);
-      res.status(400).json({ message: error?.message || "Failed to create organization" });
+      logger.error("creating organization", error);
+      // Don't expose error.message - it may contain database details
+      res.status(400).json({ message: "Failed to create organization" });
     }
   });
 
@@ -178,7 +180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const orgs = await storage.getUserOrganizations(userId);
       res.json(orgs);
     } catch (error) {
-      console.error("Error fetching organizations:", error);
+      logger.error("fetching organizations", error);
       res.status(500).json({ message: "Failed to fetch organizations" });
     }
   });
@@ -189,7 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userOrgs = await storage.getUserOrganizations(userId);
       res.json(userOrgs);
     } catch (error) {
-      console.error("Error fetching user organizations:", error);
+      logger.error("fetching user organizations", error);
       res.status(500).json({ message: "Failed to fetch organizations" });
     }
   });
@@ -213,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(org);
     } catch (error) {
-      console.error("Error fetching organization:", error);
+      logger.error("fetching organization", error);
       res.status(500).json({ message: "Failed to fetch organization" });
     }
   });
@@ -224,7 +226,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const members = await storage.getOrganizationMembers(req.params.orgId);
       res.json(members);
     } catch (error) {
-      console.error("Error fetching organization members:", error);
+      logger.error("fetching organization members", error);
       res.status(500).json({ message: "Failed to fetch organization members" });
     }
   });
@@ -263,7 +265,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const team = await storage.createTeam(data);
       res.json(team);
     } catch (error) {
-      console.error("Error creating team:", error);
+      logger.error("creating team", error);
       res.status(400).json({ message: "Failed to create team" });
     }
   });
@@ -284,7 +286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(teamsWithMembers);
     } catch (error) {
-      console.error("Error fetching teams:", error);
+      logger.error("fetching teams", error);
       res.status(500).json({ message: "Failed to fetch teams" });
     }
   });
@@ -308,7 +310,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const member = await storage.addTeamMember(data);
       res.json(member);
     } catch (error) {
-      console.error("Error adding team member:", error);
+      logger.error("adding team member", error);
       res.status(400).json({ message: "Failed to add team member" });
     }
   });
@@ -318,7 +320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const members = await storage.getTeamMembers(req.params.teamId);
       res.json(members);
     } catch (error) {
-      console.error("Error fetching team members:", error);
+      logger.error("fetching team members", error);
       res.status(500).json({ message: "Failed to fetch team members" });
     }
   });
@@ -342,7 +344,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const teams = await storage.searchTeams(searchTerm);
       res.json(teams);
     } catch (error) {
-      console.error("Error searching teams:", error);
+      logger.error("searching teams", error);
       res.status(500).json({ message: "Failed to search teams" });
     }
   });
@@ -384,7 +386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const request = await storage.createTeamJoinRequest(data);
       res.json(request);
     } catch (error) {
-      console.error("Error creating join request:", error);
+      logger.error("creating join request", error);
       res.status(400).json({ message: "Failed to create join request" });
     }
   });
@@ -396,7 +398,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requests = await storage.getTeamJoinRequests(req.params.teamId, status);
       res.json(requests);
     } catch (error) {
-      console.error("Error fetching join requests:", error);
+      logger.error("fetching join requests", error);
       res.status(500).json({ message: "Failed to fetch join requests" });
     }
   });
@@ -412,7 +414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requests = await storage.getUserJoinRequests(req.currentUser!.id, status);
       res.json(requests);
     } catch (error) {
-      console.error("Error fetching user join requests:", error);
+      logger.error("fetching user join requests", error);
       res.status(500).json({ message: "Failed to fetch join requests" });
     }
   });
@@ -424,7 +426,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requests = await storage.getOrganizationTeamJoinRequests(req.params.orgId, status);
       res.json(requests);
     } catch (error) {
-      console.error("Error fetching organization team join requests:", error);
+      logger.error("fetching organization team join requests", error);
       res.status(500).json({ message: "Failed to fetch team join requests" });
     }
   });
@@ -468,7 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.approveJoinRequest(req.params.id, req.currentUser!.id);
       res.json({ success: true, message: "Join request approved" });
     } catch (error) {
-      console.error("Error approving join request:", error);
+      logger.error("approving join request", error);
       res.status(500).json({ message: "Failed to approve join request" });
     }
   });
@@ -512,7 +514,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.rejectJoinRequest(req.params.id, req.currentUser!.id);
       res.json({ success: true, message: "Join request rejected" });
     } catch (error) {
-      console.error("Error rejecting join request:", error);
+      logger.error("rejecting join request", error);
       res.status(500).json({ message: "Failed to reject join request" });
     }
   });
@@ -542,7 +544,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteJoinRequest(req.params.id);
       res.json({ success: true, message: "Join request deleted" });
     } catch (error) {
-      console.error("Error deleting join request:", error);
+      logger.error("deleting join request", error);
       res.status(500).json({ message: "Failed to delete join request" });
     }
   });
@@ -562,7 +564,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const organizations = await storage.searchOrganizations(searchTerm);
       res.json(organizations);
     } catch (error) {
-      console.error("Error searching organizations:", error);
+      logger.error("searching organizations", error);
       res.status(500).json({ message: "Failed to search organizations" });
     }
   });
@@ -576,7 +578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(org);
     } catch (error) {
-      console.error("Error fetching organization by invite code:", error);
+      logger.error("fetching organization by invite code", error);
       res.status(500).json({ message: "Failed to fetch organization" });
     }
   });
@@ -614,7 +616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(request);
     } catch (error) {
-      console.error("Error joining organization via invite code:", error);
+      logger.error("joining organization via invite code", error);
       res.status(500).json({ message: "Failed to join organization" });
     }
   });
@@ -657,7 +659,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.status(201).json(joinRequest);
     } catch (error) {
-      console.error("Error creating organization join request:", error);
+      logger.error("creating organization join request", error);
       res.status(500).json({ message: "Failed to create join request" });
     }
   });
@@ -673,7 +675,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requests = await storage.getUserOrganizationJoinRequests(req.currentUser.id, status);
       res.json(requests);
     } catch (error) {
-      console.error("Error fetching user organization join requests:", error);
+      logger.error("fetching user organization join requests", error);
       res.status(500).json({ message: "Failed to fetch join requests" });
     }
   });
@@ -685,7 +687,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requests = await storage.getOrganizationJoinRequests(req.params.orgId, status);
       res.json(requests);
     } catch (error) {
-      console.error("Error fetching organization join requests:", error);
+      logger.error("fetching organization join requests", error);
       res.status(500).json({ message: "Failed to fetch join requests" });
     }
   });
@@ -729,7 +731,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.approveOrganizationJoinRequest(req.params.id, req.currentUser.id);
       res.json({ success: true, message: "Join request approved" });
     } catch (error) {
-      console.error("Error approving organization join request:", error);
+      logger.error("approving organization join request", error);
       res.status(500).json({ message: "Failed to approve join request" });
     }
   });
@@ -773,7 +775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.rejectOrganizationJoinRequest(req.params.id, req.currentUser.id);
       res.json({ success: true, message: "Join request rejected" });
     } catch (error) {
-      console.error("Error rejecting organization join request:", error);
+      logger.error("rejecting organization join request", error);
       res.status(500).json({ message: "Failed to reject join request" });
     }
   });
@@ -817,7 +819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const exercise = await storage.createExercise(data);
       res.json(exercise);
     } catch (error) {
-      console.error("Error creating exercise:", error);
+      logger.error("creating exercise", error);
       res.status(400).json({ message: "Failed to create exercise" });
     }
   });
@@ -842,7 +844,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const exercises = await storage.getExercises(organizationId);
       res.json(exercises);
     } catch (error) {
-      console.error("Error fetching exercises:", error);
+      logger.error("fetching exercises", error);
       res.status(500).json({ message: "Failed to fetch exercises" });
     }
   });
@@ -880,8 +882,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const program = await storage.createProgram(data);
       res.json(program);
     } catch (error: any) {
-      console.error("Error creating program:", error);
-      res.status(400).json({ message: error?.message || "Failed to create program" });
+      logger.error("creating program", error);
+      // Don't expose error.message - it may contain database details
+      res.status(400).json({ message: "Failed to create program" });
     }
   });
 
@@ -911,7 +914,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const programs = await storage.getOrganizationPrograms(organizationId);
       res.json(programs);
     } catch (error) {
-      console.error("Error fetching programs:", error);
+      logger.error("fetching programs", error);
       res.status(500).json({ message: "Failed to fetch programs" });
     }
   });
@@ -924,7 +927,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(program);
     } catch (error) {
-      console.error("Error fetching program:", error);
+      logger.error("fetching program", error);
       res.status(500).json({ message: "Failed to fetch program" });
     }
   });
@@ -965,7 +968,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const week = await storage.createProgramWeek(data);
       res.json(week);
     } catch (error) {
-      console.error("Error creating program week:", error);
+      logger.error("creating program week", error);
       res.status(400).json({ message: "Failed to create program week" });
     }
   });
@@ -991,7 +994,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json(weeks);
     } catch (error) {
-      console.error("Error fetching program weeks:", error);
+      logger.error("fetching program weeks", error);
       res.status(500).json({ message: "Failed to fetch program weeks" });
     }
   });
@@ -1036,7 +1039,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const day = await storage.createProgramDay(data);
       res.json(day);
     } catch (error) {
-      console.error("Error creating program day:", error);
+      logger.error("creating program day", error);
       res.status(400).json({ message: "Failed to create program day" });
     }
   });
@@ -1062,7 +1065,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const days = await storage.getProgramDays(req.params.weekId);
       res.json(days);
     } catch (error) {
-      console.error("Error fetching program days:", error);
+      logger.error("fetching program days", error);
       res.status(500).json({ message: "Failed to fetch program days" });
     }
   });
@@ -1112,7 +1115,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const exercise = await storage.createProgramExercise(data);
       res.json(exercise);
     } catch (error) {
-      console.error("Error creating program exercise:", error);
+      logger.error("creating program exercise", error);
       res.status(400).json({ message: "Failed to create program exercise" });
     }
   });
@@ -1143,7 +1146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const exercises = await storage.getProgramExercises(req.params.dayId);
       res.json(exercises);
     } catch (error) {
-      console.error("Error fetching program exercises:", error);
+      logger.error("fetching program exercises", error);
       res.status(500).json({ message: "Failed to fetch program exercises" });
     }
   });
@@ -1207,10 +1210,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const assignment = await storage.createProgramAssignment(data);
       res.json(assignment);
     } catch (error: any) {
-      console.error("Error creating program assignment:", error);
-      console.error("Error message:", error?.message);
-      console.error("Error stack:", error?.stack);
-      res.status(400).json({ message: error?.message || "Failed to create program assignment" });
+      logger.error("creating program assignment", error);
+      // Don't expose error.message - it may contain database details
+      res.status(400).json({ message: "Failed to create program assignment" });
     }
   });
 
@@ -1253,7 +1255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(assignments);
     } catch (error) {
-      console.error("Error fetching team program assignments:", error);
+      logger.error("fetching team program assignments", error);
       res.status(500).json({ message: "Failed to fetch program assignments" });
     }
   });
@@ -1297,7 +1299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const assignments = await storage.getAthleteAssignments(athleteId);
       res.json(assignments);
     } catch (error) {
-      console.error("Error fetching athlete assignments:", error);
+      logger.error("fetching athlete assignments", error);
       res.status(500).json({ message: "Failed to fetch athlete assignments" });
     }
   });
@@ -1353,7 +1355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(validAssignments);
     } catch (error) {
-      console.error("Error fetching program assignments:", error);
+      logger.error("fetching program assignments", error);
       res.status(500).json({ message: "Failed to fetch program assignments" });
     }
   });
@@ -1420,7 +1422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteProgramAssignment(req.params.id);
       res.json({ success: true, message: "Assignment removed" });
     } catch (error) {
-      console.error("Error deleting program assignment:", error);
+      logger.error("deleting program assignment", error);
       res.status(500).json({ message: "Failed to delete program assignment" });
     }
   });
@@ -1452,7 +1454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(templatePrograms);
     } catch (error) {
-      console.error("Error fetching available programs:", error);
+      logger.error("fetching available programs", error);
       res.status(500).json({ message: "Failed to fetch available programs" });
     }
   });
@@ -1509,7 +1511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(assignment);
     } catch (error) {
-      console.error("Error self-assigning program:", error);
+      logger.error("self-assigning program", error);
       res.status(400).json({ message: "Failed to self-assign program" });
     }
   });
@@ -1525,7 +1527,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const session = await storage.createWorkoutSession(data);
       res.json(session);
     } catch (error) {
-      console.error("Error creating workout session:", error);
+      logger.error("creating workout session", error);
       res.status(400).json({ message: "Failed to create workout session" });
     }
   });
@@ -1536,7 +1538,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sessions = await storage.getAthleteWorkouts(userId);
       res.json(sessions);
     } catch (error) {
-      console.error("Error fetching workout sessions:", error);
+      logger.error("fetching workout sessions", error);
       res.status(500).json({ message: "Failed to fetch workout sessions" });
     }
   });
@@ -1576,7 +1578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(session);
     } catch (error) {
-      console.error("Error fetching workout session:", error);
+      logger.error("fetching workout session", error);
       res.status(500).json({ message: "Failed to fetch workout session" });
     }
   });
@@ -1604,7 +1606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       res.json(session);
     } catch (error) {
-      console.error("Error updating workout session:", error);
+      logger.error("updating workout session", error);
       res.status(400).json({ message: "Failed to update workout session" });
     }
   });
@@ -1630,7 +1632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const log = await storage.createExerciseLog(data);
       res.json(log);
     } catch (error) {
-      console.error("Error creating exercise log:", error);
+      logger.error("creating exercise log", error);
       res.status(400).json({ message: "Failed to create exercise log" });
     }
   });
@@ -1671,7 +1673,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const logs = await storage.getSessionExerciseLogs(req.params.sessionId);
       res.json(logs);
     } catch (error) {
-      console.error("Error fetching exercise logs:", error);
+      logger.error("fetching exercise logs", error);
       res.status(500).json({ message: "Failed to fetch exercise logs" });
     }
   });
@@ -1702,7 +1704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const log = await storage.createSetLog(data);
       res.json(log);
     } catch (error) {
-      console.error("Error creating set log:", error);
+      logger.error("creating set log", error);
       res.status(400).json({ message: "Failed to create set log" });
     }
   });
@@ -1748,7 +1750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const logs = await storage.getExerciseLogSets(req.params.exerciseLogId);
       res.json(logs);
     } catch (error) {
-      console.error("Error fetching set logs:", error);
+      logger.error("fetching set logs", error);
       res.status(500).json({ message: "Failed to fetch set logs" });
     }
   });
@@ -1764,7 +1766,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = await storage.createMessage(data);
       res.json(message);
     } catch (error) {
-      console.error("Error creating message:", error);
+      logger.error("creating message", error);
       res.status(400).json({ message: "Failed to create message" });
     }
   });
@@ -1775,7 +1777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const messages = await storage.getConversation(userId, req.params.otherUserId);
       res.json(messages);
     } catch (error) {
-      console.error("Error fetching conversation:", error);
+      logger.error("fetching conversation", error);
       res.status(500).json({ message: "Failed to fetch conversation" });
     }
   });
@@ -1785,7 +1787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.markMessageAsRead(req.params.id);
       res.json({ success: true });
     } catch (error) {
-      console.error("Error marking message as read:", error);
+      logger.error("marking message as read", error);
       res.status(400).json({ message: "Failed to mark message as read" });
     }
   });
@@ -1814,7 +1816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteOrganization(req.params.id);
       res.json({ success: true, message: "Organization deleted" });
     } catch (error) {
-      console.error("Error deleting organization:", error);
+      logger.error("deleting organization", error);
       res.status(500).json({ message: "Failed to delete organization" });
     }
   });
@@ -1848,7 +1850,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteTeam(req.params.id);
       res.json({ success: true, message: "Team deleted" });
     } catch (error) {
-      console.error("Error deleting team:", error);
+      logger.error("deleting team", error);
       res.status(500).json({ message: "Failed to delete team" });
     }
   });
@@ -1883,7 +1885,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.removeTeamMember(req.params.teamId, req.params.userId);
       res.json({ success: true, message: "Team member removed" });
     } catch (error) {
-      console.error("Error removing team member:", error);
+      logger.error("removing team member", error);
       res.status(500).json({ message: "Failed to remove team member" });
     }
   });
@@ -1916,7 +1918,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteProgram(req.params.id);
       res.json({ success: true, message: "Program deleted" });
     } catch (error) {
-      console.error("Error deleting program:", error);
+      logger.error("deleting program", error);
       res.status(500).json({ message: "Failed to delete program" });
     }
   });
@@ -1954,7 +1956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteExercise(req.params.id);
       res.json({ success: true, message: "Exercise deleted" });
     } catch (error) {
-      console.error("Error deleting exercise:", error);
+      logger.error("deleting exercise", error);
       res.status(500).json({ message: "Failed to delete exercise" });
     }
   });
@@ -1979,7 +1981,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteWorkoutSession(req.params.id);
       res.json({ success: true, message: "Workout session deleted" });
     } catch (error) {
-      console.error("Error deleting workout session:", error);
+      logger.error("deleting workout session", error);
       res.status(500).json({ message: "Failed to delete workout session" });
     }
   });
@@ -2046,7 +2048,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(updated);
     } catch (error) {
-      console.error("Error updating exercise:", error);
+      logger.error("updating exercise", error);
       res.status(400).json({ message: "Failed to update exercise" });
     }
   });
@@ -2090,7 +2092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(updated);
     } catch (error) {
-      console.error("Error updating program:", error);
+      logger.error("updating program", error);
       res.status(400).json({ message: "Failed to update program" });
     }
   });
@@ -2151,7 +2153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       res.json(updated);
     } catch (error) {
-      console.error("Error updating program exercise:", error);
+      logger.error("updating program exercise", error);
       res.status(400).json({ message: "Failed to update program exercise" });
     }
   });
@@ -2200,7 +2202,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.deleteProgramExercise(req.params.id);
       res.status(204).send();
     } catch (error) {
-      console.error("Error deleting program exercise:", error);
+      logger.error("deleting program exercise", error);
       res.status(500).json({ message: "Failed to delete program exercise" });
     }
   });
@@ -2234,7 +2236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = await storage.createMessage(data);
       res.json(message);
     } catch (error) {
-      console.error("Error creating message:", error);
+      logger.error("creating message", error);
       res.status(400).json({ message: "Failed to create message" });
     }
   });
@@ -2262,7 +2264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
       res.json(messages);
     } catch (error) {
-      console.error("Error fetching conversation:", error);
+      logger.error("fetching conversation", error);
       res.status(500).json({ message: "Failed to fetch conversation" });
     }
   });
@@ -2292,7 +2294,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.markMessageAsRead(req.params.id);
       res.status(204).send();
     } catch (error) {
-      console.error("Error marking message as read:", error);
+      logger.error("marking message as read", error);
       res.status(500).json({ message: "Failed to mark message as read" });
     }
   });
@@ -2329,7 +2331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error.message && error.message.includes('does not have access')) {
         return res.status(403).json({ message: "Forbidden: You do not have access to this organization" });
       }
-      console.error("Error fetching statistics:", error);
+      logger.error("fetching statistics", error);
       res.status(500).json({ message: "Failed to fetch statistics" });
     }
   });
