@@ -246,7 +246,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get organization members
   app.get('/api/organizations/:orgId/members', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
     try {
+      // Get members from organization_members table
       const members = await storage.getOrganizationMembers(req.params.orgId);
+      
+      // Get organization owner
+      const org = await storage.getOrganization(req.params.orgId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      const owner = await storage.getUser(org.ownerId);
+      if (!owner) {
+        return res.status(500).json({ message: "Organization owner not found" });
+      }
+      
+      // Check if owner is already in members list
+      const ownerInMembers = members.some(m => m.userId === owner.id);
+      
+      // If owner is not in members, add them with admin role
+      if (!ownerInMembers) {
+        members.push({
+          id: `owner-${org.id}`, // Synthetic ID for the owner entry
+          organizationId: org.id,
+          userId: owner.id,
+          role: 'admin' as const,
+          joinedAt: org.createdAt,
+          user: owner
+        });
+      }
+      
       res.json(members);
     } catch (error) {
       logger.error("fetching organization members", error);
