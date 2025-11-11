@@ -191,8 +191,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/organizations/my', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
-      const userOrgs = await storage.getUserOrganizations(userId);
-      res.json(userOrgs);
+      
+      // Get organizations user owns
+      const ownedOrgs = await storage.getUserOrganizations(userId);
+      
+      // Get organizations user is a member of
+      const memberships = await storage.getUserOrganizationMemberships(userId);
+      const memberOrgIds = memberships.map(m => m.organizationId);
+      
+      // Fetch full organization details for memberships
+      const memberOrgs = await Promise.all(
+        memberOrgIds.map(orgId => storage.getOrganization(orgId))
+      );
+      
+      // Combine and deduplicate
+      const allOrgs = [...ownedOrgs];
+      memberOrgs.forEach(org => {
+        if (org && !allOrgs.find(o => o.id === org.id)) {
+          allOrgs.push(org);
+        }
+      });
+      
+      res.json(allOrgs);
     } catch (error) {
       logger.error("fetching user organizations", error);
       res.status(500).json({ message: "Failed to fetch organizations" });
