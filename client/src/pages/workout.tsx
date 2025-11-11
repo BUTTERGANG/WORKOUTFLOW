@@ -397,6 +397,7 @@ export default function Workout() {
                           size="icon"
                           onClick={() => setReps(Math.max(1, reps - 1))}
                           data-testid="button-reps-minus"
+                          aria-label="Decrease reps"
                         >
                           <Minus className="h-4 w-4" />
                         </Button>
@@ -414,6 +415,7 @@ export default function Workout() {
                           size="icon"
                           onClick={() => setReps(reps + 1)}
                           data-testid="button-reps-plus"
+                          aria-label="Increase reps"
                         >
                           <Plus className="h-4 w-4" />
                         </Button>

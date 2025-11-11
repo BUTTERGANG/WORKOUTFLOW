@@ -219,6 +219,7 @@ export default function Dashboard() {
                       size="icon"
                       onClick={copyInviteLink}
                       data-testid="button-dashboard-copy-code"
+                      aria-label={copiedCode ? "Invite code copied" : "Copy invite code"}
                     >
                       {copiedCode ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                     </Button>
