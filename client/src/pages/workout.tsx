@@ -17,6 +17,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { WorkoutSession, ExerciseLog, SetLog, ProgramAssignment, ProgramDay, Exercise, ProgramExercise } from "@shared/schema";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function Workout() {
   const { toast } = useToast();
@@ -227,14 +229,7 @@ export default function Workout() {
   }, [isAuthenticated, isLoading, toast]);
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (!user) return null;

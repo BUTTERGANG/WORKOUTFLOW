@@ -28,6 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { User, OrganizationMember, Program, ProgramAssignment, OrganizationJoinRequest } from "@shared/schema";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { EmptyState } from "@/components/EmptyState";
 
 type JoinRequest = OrganizationJoinRequest & {
   user: User;
@@ -216,14 +218,7 @@ export default function Athletes() {
   }, [isAuthenticated, isLoading, toast]);
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (!user) return null;

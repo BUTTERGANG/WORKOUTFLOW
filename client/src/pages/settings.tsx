@@ -11,6 +11,7 @@ import { LogOut, User, Shield, Link2, Copy, Check } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { Organization } from "@shared/schema";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -44,14 +45,7 @@ export default function Settings() {
   }, [isAuthenticated, isLoading, toast]);
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (!user) return null;

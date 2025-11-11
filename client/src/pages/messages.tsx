@@ -11,6 +11,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User as UserType, Message, OrganizationMember } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function Messages() {
   const { toast } = useToast();
@@ -73,14 +75,7 @@ export default function Messages() {
   });
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (!user) return null;
@@ -118,12 +113,14 @@ export default function Messages() {
               <CardContent className="p-0">
                 <ScrollArea className="h-[400px] lg:h-[calc(100vh-20rem)]">
                   {membersLoading ? (
-                    <div className="p-4 text-center text-muted-foreground">Loading...</div>
+                    <LoadingSpinner message="Loading members..." />
                   ) : otherUsers.length === 0 ? (
-                    <div className="p-4 text-center text-muted-foreground">
-                      <User className="mx-auto mb-2 h-8 w-8" />
-                      <p className="text-sm">No team members yet</p>
-                    </div>
+                    <EmptyState
+                      icon={User}
+                      title="No team members yet"
+                      description="Invite team members to start messaging"
+                      variant="inline"
+                    />
                   ) : (
                     <div className="divide-y divide-border">
                       {otherUsers.map((member) => (
@@ -178,27 +175,21 @@ export default function Messages() {
                 {/* Messages Area */}
                 <ScrollArea className="flex-1 p-4">
                   {!selectedUserId ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <MessageSquare className="mb-4 h-16 w-16 text-muted-foreground" />
-                      <h3 className="mb-2 text-xl font-semibold">Select a conversation</h3>
-                      <p className="text-center text-muted-foreground max-w-sm">
-                        Choose a team member from the list to start messaging
-                      </p>
-                    </div>
+                    <EmptyState
+                      icon={MessageSquare}
+                      title="Select a conversation"
+                      description="Choose a team member from the list to start messaging"
+                      variant="inline"
+                    />
                   ) : messagesLoading ? (
-                    <div className="flex items-center justify-center py-12">
-                      <div className="text-center">
-                        <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-                        <p className="text-muted-foreground">Loading messages...</p>
-                      </div>
-                    </div>
+                    <LoadingSpinner message="Loading messages..." />
                   ) : messages.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <MessageSquare className="mb-4 h-12 w-12 text-muted-foreground" />
-                      <p className="text-center text-muted-foreground">
-                        No messages yet. Start the conversation!
-                      </p>
-                    </div>
+                    <EmptyState
+                      icon={MessageSquare}
+                      title="No messages yet"
+                      description="Start the conversation!"
+                      variant="inline"
+                    />
                   ) : (
                     <div className="space-y-4">
                       {messages.map((message) => {
