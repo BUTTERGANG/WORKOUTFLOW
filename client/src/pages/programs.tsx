@@ -141,10 +141,11 @@ export default function Programs() {
   });
 
   const updateDayMutation = useMutation({
-    mutationFn: async ({ dayId, name }: { dayId: number; name: string }) =>
+    mutationFn: async ({ dayId, name, programId }: { dayId: string; name: string; programId: string }) =>
       apiRequest(`/api/program-days/${dayId}`, { method: 'PATCH', body: { name } }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/programs', currentOrganization?.id] });
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', variables.programId, 'weeks'] });
       toast({ title: "Success", description: "Day name updated successfully" });
     },
     onError: (error: any) => {
@@ -395,6 +396,7 @@ export default function Programs() {
           open={buildDialogOpen}
           onOpenChange={setBuildDialogOpen}
           exercises={exercises || []}
+          updateDayMutation={updateDayMutation}
         />
       </div>
     </div>
@@ -407,11 +409,13 @@ function ProgramBuilderDialog({
   open,
   onOpenChange,
   exercises,
+  updateDayMutation,
 }: {
   program: Program | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   exercises: Exercise[];
+  updateDayMutation: ReturnType<typeof useMutation<any, Error, { dayId: string; name: string; programId: string }>>;
 }) {
   const { toast } = useToast();
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
@@ -534,7 +538,11 @@ function ProgramBuilderDialog({
                                       });
                                       return;
                                     }
-                                    updateDayMutation.mutate({ dayId: day.id, name: editDayName.trim() });
+                                    updateDayMutation.mutate({ 
+                                      dayId: day.id, 
+                                      name: editDayName.trim(),
+                                      programId: program.id 
+                                    });
                                     setEditingDayId(null);
                                   }}
                                   data-testid={`button-save-day-${day.id}`}
