@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquare, Send, User } from "lucide-react";
+import { MessageSquare, Send, User, AlertTriangle, RefreshCw, Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -19,6 +19,8 @@ export default function Messages() {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [messageText, setMessageText] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -35,7 +37,7 @@ export default function Messages() {
   }, [isAuthenticated, isLoading, toast]);
 
   // Fetch user's organizations
-  const { data: organizations = [] } = useQuery<any[]>({
+  const { data: organizations = [], isLoading: orgsLoading } = useQuery<any[]>({
     queryKey: ['/api/organizations/my'],
     enabled: !!user,
   });
@@ -51,34 +53,118 @@ export default function Messages() {
   const otherUsers = members.filter(m => m.userId !== user?.id);
 
   // Fetch conversation with selected user
-  const { data: messages = [], isLoading: messagesLoading, refetch: refetchMessages } = useQuery<Message[]>({
+  const { 
+    data: messages = [], 
+    isLoading: messagesLoading, 
+    isError: messagesError,
+    error: messagesErrorObj,
+    refetch: refetchMessages 
+  } = useQuery<Message[]>({
     queryKey: ['/api/messages', selectedUserId],
     enabled: !!selectedUserId,
-    refetchInterval: 5000, // Refetch every 5 seconds for new messages
+    refetchInterval: 5000,
+    retry: 2,
   });
 
-  // Send message mutation
+  // Send message mutation with optimistic updates
   const sendMessageMutation = useMutation({
     mutationFn: async (data: { recipientId: string; content: string }) =>
       apiRequest('/api/messages', { method: 'POST', body: data }),
-    onSuccess: () => {
-      setMessageText("");
-      refetchMessages();
+    onMutate: async (newMessage) => {
+      await queryClient.cancelQueries({
+        queryKey: ['/api/messages', selectedUserId],
+      });
+
+      const previousMessages = queryClient.getQueryData<Message[]>([
+        '/api/messages',
+        selectedUserId,
+      ]);
+
+      const optimisticMessage: Message = {
+        id: 'temp-' + Date.now(),
+        senderId: user!.id,
+        recipientId: newMessage.recipientId,
+        content: newMessage.content,
+        createdAt: new Date().toISOString(),
+        readAt: null,
+        workoutSessionId: null,
+      };
+
+      queryClient.setQueryData<Message[]>(
+        ['/api/messages', selectedUserId],
+        (old = []) => [...old, optimisticMessage]
+      );
+
+      return { previousMessages };
     },
-    onError: () => {
+    onError: (err, newMessage, context) => {
+      if (context?.previousMessages) {
+        queryClient.setQueryData(
+          ['/api/messages', selectedUserId],
+          context.previousMessages
+        );
+      }
       toast({
-        title: "Error",
-        description: "Failed to send message",
+        title: "Failed to send message",
+        description: "Please try again",
         variant: "destructive",
       });
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/messages', selectedUserId],
+      });
+    },
+    onSuccess: () => {
+      setMessageText("");
+    },
   });
+
+  // Mark messages as read mutation
+  const markAsReadMutation = useMutation({
+    mutationFn: async (messageId: string) =>
+      apiRequest(`/api/messages/${messageId}/read`, { method: 'PUT' }),
+  });
+
+  // Auto-scroll to latest message when new messages arrive
+  useEffect(() => {
+    if (messages.length > 0 && autoScroll) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages.length, autoScroll]);
+
+  // Mark unread messages as read when viewing conversation
+  useEffect(() => {
+    if (messages.length === 0 || !selectedUserId || !user) return;
+
+    const unreadMessages = messages.filter(
+      (msg) => msg.recipientId === user.id && !msg.readAt
+    );
+
+    unreadMessages.forEach((msg) => {
+      markAsReadMutation.mutate(msg.id);
+    });
+  }, [messages, selectedUserId, user?.id]);
 
   if (isLoading) {
     return <LoadingSpinner fullScreen />;
   }
 
   if (!user) return null;
+
+  // Handle empty organization state
+  if (!orgsLoading && organizations.length === 0) {
+    return (
+      <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
+        <EmptyState
+          icon={Users}
+          title="No organization"
+          description="You need to create or join an organization to send messages"
+          variant="page"
+        />
+      </div>
+    );
+  }
 
   const handleSendMessage = () => {
     if (!messageText.trim() || !selectedUserId) return;
@@ -173,7 +259,16 @@ export default function Messages() {
               </CardHeader>
               <CardContent className="flex flex-1 flex-col p-0">
                 {/* Messages Area */}
-                <ScrollArea className="flex-1 p-4">
+                <ScrollArea 
+                  className="flex-1 p-4"
+                  onScroll={(e: React.UIEvent<HTMLDivElement>) => {
+                    const element = e.currentTarget;
+                    const isAtBottom = Math.abs(
+                      element.scrollHeight - element.scrollTop - element.clientHeight
+                    ) < 10;
+                    setAutoScroll(isAtBottom);
+                  }}
+                >
                   {!selectedUserId ? (
                     <EmptyState
                       icon={MessageSquare}
@@ -183,6 +278,20 @@ export default function Messages() {
                     />
                   ) : messagesLoading ? (
                     <LoadingSpinner message="Loading messages..." />
+                  ) : messagesError ? (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <AlertTriangle className="mb-4 h-12 w-12 text-destructive" />
+                      <h3 className="mb-2 text-lg font-semibold">Failed to load messages</h3>
+                      <p className="mb-4 text-sm text-muted-foreground text-center max-w-sm">
+                        {messagesErrorObj instanceof Error
+                          ? messagesErrorObj.message
+                          : 'Unable to fetch conversation. Please try again.'}
+                      </p>
+                      <Button onClick={() => refetchMessages()} variant="outline" data-testid="button-retry-messages">
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Try Again
+                      </Button>
+                    </div>
                   ) : messages.length === 0 ? (
                     <EmptyState
                       icon={MessageSquare}
@@ -229,6 +338,7 @@ export default function Messages() {
                           </div>
                         );
                       })}
+                      <div ref={messagesEndRef} />
                     </div>
                   )}
                 </ScrollArea>
