@@ -125,6 +125,7 @@ export const teamMembers = pgTable("team_members", {
 }, (table) => [
   index("idx_team_members_team_id").on(table.teamId),
   index("idx_team_members_user_id").on(table.userId),
+  unique("unique_team_member").on(table.teamId, table.userId),
 ]);
 
 // Team join requests (for athletes to request to join teams)

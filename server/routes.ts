@@ -275,18 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/organizations/:orgId/teams', isAuthenticated, verifyOrganizationAccess, async (req: AuthRequest, res) => {
     try {
-      const teams = await storage.getOrganizationTeams(req.params.orgId);
-      
-      // Fetch members for each team, filtering to only athletes
-      const teamsWithMembers = await Promise.all(
-        teams.map(async (team) => {
-          const allMembers = await storage.getTeamMembers(team.id);
-          // Filter to only include athletes (exclude coaches)
-          const athleteMembers = allMembers.filter(m => m.user.role === 'athlete');
-          return { ...team, members: athleteMembers };
-        })
-      );
-      
+      const teamsWithMembers = await storage.getOrganizationTeamsWithMembers(req.params.orgId);
       res.json(teamsWithMembers);
     } catch (error) {
       logger.error("fetching teams", error);

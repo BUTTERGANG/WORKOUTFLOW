@@ -106,6 +106,7 @@ export interface IStorage {
   createTeam(team: InsertTeam): Promise<Team>;
   getTeam(id: string): Promise<Team | undefined>;
   getOrganizationTeams(organizationId: string): Promise<Team[]>;
+  getOrganizationTeamsWithMembers(organizationId: string): Promise<(Team & { members: (TeamMember & { user: User })[] })[]>;
   addTeamMember(member: InsertTeamMember): Promise<TeamMember>;
   getTeamMembers(teamId: string): Promise<(TeamMember & { user: User })[]>;
   searchTeams(searchTerm: string): Promise<(Team & { organization: Organization })[]>;
@@ -496,6 +497,43 @@ export class DatabaseStorage implements IStorage {
       .from(teams)
       .where(eq(teams.organizationId, organizationId));
     return teamList;
+  }
+
+  async getOrganizationTeamsWithMembers(organizationId: string): Promise<(Team & { members: (TeamMember & { user: User })[] })[]> {
+    const rows = await db
+      .select({
+        team: teams,
+        member: teamMembers,
+        user: users,
+      })
+      .from(teams)
+      .leftJoin(teamMembers, and(
+        eq(teams.id, teamMembers.teamId),
+        eq(teamMembers.role, 'athlete')
+      ))
+      .leftJoin(users, eq(teamMembers.userId, users.id))
+      .where(eq(teams.organizationId, organizationId))
+      .orderBy(teams.name, users.lastName, users.firstName);
+
+    const teamsMap = new Map<string, Team & { members: (TeamMember & { user: User })[] }>();
+
+    for (const row of rows) {
+      if (!teamsMap.has(row.team.id)) {
+        teamsMap.set(row.team.id, {
+          ...row.team,
+          members: [],
+        });
+      }
+
+      if (row.member && row.user) {
+        teamsMap.get(row.team.id)!.members.push({
+          ...row.member,
+          user: row.user,
+        });
+      }
+    }
+
+    return Array.from(teamsMap.values());
   }
 
   async addTeamMember(memberData: InsertTeamMember): Promise<TeamMember> {
