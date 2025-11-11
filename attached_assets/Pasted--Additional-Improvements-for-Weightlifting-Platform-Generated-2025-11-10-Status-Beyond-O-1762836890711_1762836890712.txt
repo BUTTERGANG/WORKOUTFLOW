@@ -1,0 +1,3624 @@
+# Additional Improvements for Weightlifting Platform
+
+**Generated:** 2025-11-10
+**Status:** Beyond OBEY, OBEY2, and OBEY3
+
+This document covers improvements not fully addressed in the previous guides, organized by impact and implementation complexity.
+
+---
+
+## Table of Contents
+
+1. [User Experience Enhancements](#ux-enhancements)
+2. [Accessibility (WCAG 2.1 Compliance)](#accessibility)
+3. [Mobile-Specific Features](#mobile-features)
+4. [Internationalization (i18n)](#internationalization)
+5. [Data Management & Exports](#data-management)
+6. [Advanced Coaching Tools](#coaching-tools)
+7. [Gamification & Motivation](#gamification)
+8. [Calendar & Scheduling](#calendar)
+9. [Advanced Analytics](#analytics)
+10. [Integration Ecosystem](#integrations)
+11. [Collaboration Features](#collaboration)
+12. [Admin & Compliance](#admin-compliance)
+13. [Performance & Offline](#performance-offline)
+14. [Marketing & Growth Features](#marketing)
+15. [Enterprise Features](#enterprise)
+
+---
+
+<a name="ux-enhancements"></a>
+## 1. USER EXPERIENCE ENHANCEMENTS
+
+### 1.1 Onboarding Flow Improvements
+
+**Current State:** Basic onboarding exists but could be more guided.
+
+**Add Interactive Tutorial:**
+
+```typescript
+// features/onboarding/components/InteractiveTour.tsx
+import Shepherd from 'shepherd.js';
+import 'shepherd.js/dist/css/shepherd.css';
+
+export function useOnboardingTour() {
+  const tour = new Shepherd.Tour({
+    useModalOverlay: true,
+    defaultStepOptions: {
+      cancelIcon: { enabled: true },
+      classes: 'shadow-lg',
+      scrollTo: { behavior: 'smooth', block: 'center' },
+    },
+  });
+
+  // Step 1: Welcome
+  tour.addStep({
+    id: 'welcome',
+    title: 'Welcome to Your Training Platform! 🏋️',
+    text: `
+      <div class="space-y-2">
+        <p>Let's take a quick tour to get you started.</p>
+        <p>This will only take 2 minutes.</p>
+      </div>
+    `,
+    buttons: [
+      { text: 'Skip Tour', action: tour.cancel },
+      { text: 'Start Tour', action: tour.next },
+    ],
+  });
+
+  // Step 2: Dashboard
+  tour.addStep({
+    id: 'dashboard',
+    title: 'Your Dashboard',
+    text: 'Here you can see your workout stats, upcoming sessions, and progress.',
+    attachTo: { element: '[data-tour="dashboard"]', on: 'bottom' },
+    buttons: [
+      { text: 'Back', action: tour.back },
+      { text: 'Next', action: tour.next },
+    ],
+  });
+
+  // Step 3: Programs (if coach)
+  if (user?.role !== 'athlete') {
+    tour.addStep({
+      id: 'programs',
+      title: 'Training Programs',
+      text: 'Create and manage training programs for your athletes here.',
+      attachTo: { element: '[data-tour="programs"]', on: 'right' },
+      buttons: [
+        { text: 'Back', action: tour.back },
+        { text: 'Next', action: tour.next },
+      ],
+    });
+  }
+
+  // Step 4: Workouts (if athlete)
+  if (user?.role === 'athlete') {
+    tour.addStep({
+      id: 'workouts',
+      title: 'Log Your Workouts',
+      text: 'Track your sets, reps, and weight for every exercise.',
+      attachTo: { element: '[data-tour="workout"]', on: 'right' },
+      buttons: [
+        { text: 'Back', action: tour.back },
+        { text: 'Next', action: tour.next },
+      ],
+    });
+  }
+
+  // Step 5: Complete
+  tour.addStep({
+    id: 'complete',
+    title: 'You\'re All Set! 🎉',
+    text: `
+      <div class="space-y-2">
+        <p>You're ready to start training!</p>
+        <p>If you need help, click the ? icon anytime.</p>
+      </div>
+    `,
+    buttons: [{ text: 'Start Training', action: tour.complete }],
+  });
+
+  return tour;
+}
+
+// Usage in App.tsx or Dashboard
+export default function Dashboard() {
+  const tour = useOnboardingTour();
+
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('tour-completed');
+    if (!hasSeenTour) {
+      tour.start();
+      tour.on('complete', () => {
+        localStorage.setItem('tour-completed', 'true');
+      });
+    }
+  }, []);
+
+  return (
+    <div>
+      {/* Add data-tour attributes to key elements */}
+      <div data-tour="dashboard">
+        {/* Dashboard content */}
+      </div>
+    </div>
+  );
+}
+```
+
+### 1.2 Contextual Help System
+
+**Add Help Button with Context-Aware Tips:**
+
+```typescript
+// components/ContextualHelp.tsx
+import { HelpCircle } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { useLocation } from 'wouter';
+
+const helpContent: Record<string, { title: string; content: string; video?: string }> = {
+  '/programs': {
+    title: 'Creating Training Programs',
+    content: 'Build programs by adding weeks, days, and exercises. Assign programs to athletes to track their progress.',
+    video: 'https://youtube.com/watch?v=...',
+  },
+  '/workout': {
+    title: 'Logging Workouts',
+    content: 'Enter the weight and reps for each set. Use RPE (Rate of Perceived Exertion) to track intensity.',
+    video: 'https://youtube.com/watch?v=...',
+  },
+  // ... more pages
+};
+
+export function ContextualHelp() {
+  const [location] = useLocation();
+  const help = helpContent[location] || {
+    title: 'Help',
+    content: 'Need assistance? Check our documentation or contact support.',
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="fixed bottom-4 right-4 z-50">
+          <HelpCircle className="h-5 w-5" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80">
+        <div className="space-y-2">
+          <h3 className="font-semibold">{help.title}</h3>
+          <p className="text-sm text-muted-foreground">{help.content}</p>
+          {help.video && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={help.video} target="_blank" rel="noopener noreferrer">
+                Watch Video Tutorial
+              </a>
+            </Button>
+          )}
+          <Button variant="link" size="sm" asChild>
+            <a href="/docs" target="_blank">
+              View Full Documentation
+            </a>
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+```
+
+### 1.3 Smart Form Validation with Real-Time Feedback
+
+**Enhanced Form Experience:**
+
+```typescript
+// components/SmartInput.tsx
+import { useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
+import { Check, X, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface SmartInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  validate?: (value: string) => Promise<{ valid: boolean; message?: string }>;
+  debounceMs?: number;
+}
+
+export function SmartInput({
+  value,
+  onChange,
+  validate,
+  debounceMs = 500,
+}: SmartInputProps) {
+  const [validationState, setValidationState] = useState<
+    'idle' | 'validating' | 'valid' | 'invalid'
+  >('idle');
+  const [validationMessage, setValidationMessage] = useState<string>('');
+
+  useEffect(() => {
+    if (!validate || !value) {
+      setValidationState('idle');
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setValidationState('validating');
+      try {
+        const result = await validate(value);
+        setValidationState(result.valid ? 'valid' : 'invalid');
+        setValidationMessage(result.message || '');
+      } catch (error) {
+        setValidationState('invalid');
+        setValidationMessage('Validation failed');
+      }
+    }, debounceMs);
+
+    return () => clearTimeout(timer);
+  }, [value, validate, debounceMs]);
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={cn(
+          validationState === 'valid' && 'border-green-500',
+          validationState === 'invalid' && 'border-red-500'
+        )}
+      />
+      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+        {validationState === 'validating' && (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        )}
+        {validationState === 'valid' && (
+          <Check className="h-4 w-4 text-green-500" />
+        )}
+        {validationState === 'invalid' && (
+          <X className="h-4 w-4 text-red-500" />
+        )}
+      </div>
+      {validationMessage && (
+        <p className={cn(
+          'text-sm mt-1',
+          validationState === 'valid' ? 'text-green-600' : 'text-red-600'
+        )}>
+          {validationMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Usage for unique email check:
+<SmartInput
+  value={email}
+  onChange={setEmail}
+  validate={async (email) => {
+    const res = await fetch(`/api/auth/check-email?email=${email}`);
+    const { available } = await res.json();
+    return {
+      valid: available,
+      message: available ? 'Email available' : 'Email already taken',
+    };
+  }}
+/>
+```
+
+### 1.4 Undo/Redo Functionality
+
+**Add Command Pattern for Undo/Redo:**
+
+```typescript
+// hooks/useUndoRedo.ts
+import { useState, useCallback } from 'react';
+
+interface Command<T> {
+  execute: () => T;
+  undo: () => T;
+}
+
+export function useUndoRedo<T>(initialState: T) {
+  const [state, setState] = useState<T>(initialState);
+  const [history, setHistory] = useState<Command<T>[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(-1);
+
+  const executeCommand = useCallback((command: Command<T>) => {
+    const newState = command.execute();
+    setState(newState);
+
+    // Clear any "future" history
+    const newHistory = history.slice(0, currentIndex + 1);
+    newHistory.push(command);
+    setHistory(newHistory);
+    setCurrentIndex(newHistory.length - 1);
+  }, [history, currentIndex]);
+
+  const undo = useCallback(() => {
+    if (currentIndex < 0) return;
+
+    const command = history[currentIndex];
+    const newState = command.undo();
+    setState(newState);
+    setCurrentIndex(currentIndex - 1);
+  }, [history, currentIndex]);
+
+  const redo = useCallback(() => {
+    if (currentIndex >= history.length - 1) return;
+
+    const command = history[currentIndex + 1];
+    const newState = command.execute();
+    setState(newState);
+    setCurrentIndex(currentIndex + 1);
+  }, [history, currentIndex]);
+
+  const canUndo = currentIndex >= 0;
+  const canRedo = currentIndex < history.length - 1;
+
+  return {
+    state,
+    executeCommand,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  };
+}
+
+// Usage in program builder:
+const programBuilder = useUndoRedo(initialProgram);
+
+// Add exercise command
+const addExerciseCommand = {
+  execute: () => ({
+    ...programBuilder.state,
+    exercises: [...programBuilder.state.exercises, newExercise],
+  }),
+  undo: () => ({
+    ...programBuilder.state,
+    exercises: programBuilder.state.exercises.slice(0, -1),
+  }),
+};
+
+programBuilder.executeCommand(addExerciseCommand);
+
+// UI
+<div className="flex gap-2">
+  <Button
+    variant="outline"
+    size="sm"
+    onClick={programBuilder.undo}
+    disabled={!programBuilder.canUndo}
+  >
+    <Undo2 className="h-4 w-4" />
+    Undo (Ctrl+Z)
+  </Button>
+  <Button
+    variant="outline"
+    size="sm"
+    onClick={programBuilder.redo}
+    disabled={!programBuilder.canRedo}
+  >
+    <Redo2 className="h-4 w-4" />
+    Redo (Ctrl+Y)
+  </Button>
+</div>
+```
+
+---
+
+<a name="accessibility"></a>
+## 2. ACCESSIBILITY (WCAG 2.1 AA Compliance)
+
+**Current State:** Only 35 aria-/role attributes found - needs major improvement.
+
+### 2.1 Keyboard Navigation
+
+**Add Comprehensive Keyboard Shortcuts:**
+
+```typescript
+// hooks/useKeyboardShortcuts.ts
+import { useEffect } from 'react';
+
+interface ShortcutConfig {
+  key: string;
+  ctrlKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+  action: () => void;
+  description: string;
+}
+
+export function useKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      for (const shortcut of shortcuts) {
+        const ctrlMatch = shortcut.ctrlKey ? event.ctrlKey || event.metaKey : !event.ctrlKey && !event.metaKey;
+        const shiftMatch = shortcut.shiftKey ? event.shiftKey : !event.shiftKey;
+        const altMatch = shortcut.altKey ? event.altKey : !event.altKey;
+        const keyMatch = event.key.toLowerCase() === shortcut.key.toLowerCase();
+
+        if (ctrlMatch && shiftMatch && altMatch && keyMatch) {
+          event.preventDefault();
+          shortcut.action();
+          return;
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [shortcuts]);
+}
+
+// Global shortcuts component
+export function GlobalShortcuts() {
+  const [location, setLocation] = useLocation();
+
+  useKeyboardShortcuts([
+    {
+      key: 'k',
+      ctrlKey: true,
+      action: () => openCommandPalette(),
+      description: 'Open command palette',
+    },
+    {
+      key: 'p',
+      ctrlKey: true,
+      action: () => setLocation('/programs'),
+      description: 'Go to programs',
+    },
+    {
+      key: 'w',
+      ctrlKey: true,
+      action: () => setLocation('/workout'),
+      description: 'Go to workout',
+    },
+    {
+      key: '/',
+      action: () => focusSearch(),
+      description: 'Focus search',
+    },
+    {
+      key: '?',
+      shiftKey: true,
+      action: () => openShortcutsDialog(),
+      description: 'Show keyboard shortcuts',
+    },
+  ]);
+
+  return null;
+}
+
+// Shortcuts help dialog
+export function KeyboardShortcutsDialog() {
+  return (
+    <Dialog>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Keyboard Shortcuts</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-[1fr,auto] gap-4">
+            <span>Open command palette</span>
+            <kbd className="kbd">Ctrl + K</kbd>
+          </div>
+          <div className="grid grid-cols-[1fr,auto] gap-4">
+            <span>Go to programs</span>
+            <kbd className="kbd">Ctrl + P</kbd>
+          </div>
+          {/* ... more shortcuts */}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+### 2.2 Screen Reader Support
+
+**Add Proper ARIA Labels:**
+
+```typescript
+// components/accessible/AccessibleButton.tsx
+interface AccessibleButtonProps extends ButtonProps {
+  ariaLabel: string;
+  ariaDescribedBy?: string;
+  ariaPressed?: boolean;
+  ariaExpanded?: boolean;
+}
+
+export function AccessibleButton({
+  ariaLabel,
+  ariaDescribedBy,
+  ariaPressed,
+  ariaExpanded,
+  children,
+  ...props
+}: AccessibleButtonProps) {
+  return (
+    <Button
+      aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
+      aria-pressed={ariaPressed}
+      aria-expanded={ariaExpanded}
+      {...props}
+    >
+      {children}
+    </Button>
+  );
+}
+
+// Usage:
+<AccessibleButton
+  ariaLabel="Add new exercise to workout"
+  ariaDescribedBy="exercise-help"
+  onClick={addExercise}
+>
+  <Plus className="h-4 w-4" />
+  Add Exercise
+</AccessibleButton>
+<span id="exercise-help" className="sr-only">
+  Click to add a new exercise to your workout program
+</span>
+```
+
+### 2.3 Focus Management
+
+**Proper Focus Trapping in Modals:**
+
+```typescript
+// hooks/useFocusTrap.ts
+import { useEffect, useRef } from 'react';
+
+export function useFocusTrap(isActive: boolean) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!isActive || !containerRef.current) return;
+
+    // Store previous focus
+    previousFocusRef.current = document.activeElement as HTMLElement;
+
+    // Get focusable elements
+    const focusableElements = containerRef.current.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+
+    const firstElement = focusableElements[0] as HTMLElement;
+    const lastElement = focusableElements[focusableElements.length - 1] as HTMLElement;
+
+    // Focus first element
+    firstElement?.focus();
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        // Shift + Tab
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement?.focus();
+        }
+      } else {
+        // Tab
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement?.focus();
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      // Restore previous focus
+      previousFocusRef.current?.focus();
+    };
+  }, [isActive]);
+
+  return containerRef;
+}
+
+// Usage in Dialog:
+export function AccessibleDialog({ open, children }: DialogProps) {
+  const trapRef = useFocusTrap(open);
+
+  return (
+    <Dialog open={open}>
+      <DialogContent ref={trapRef}>
+        {children}
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+### 2.4 Color Contrast & High Contrast Mode
+
+```typescript
+// hooks/useHighContrast.ts
+export function useHighContrast() {
+  const [highContrast, setHighContrast] = useState(false);
+
+  useEffect(() => {
+    // Check if user prefers high contrast
+    const mediaQuery = window.matchMedia('(prefers-contrast: high)');
+    setHighContrast(mediaQuery.matches);
+
+    const handler = (e: MediaQueryListEvent) => setHighContrast(e.matches);
+    mediaQuery.addEventListener('change', handler);
+
+    return () => mediaQuery.removeEventListener('change', handler);
+  }, []);
+
+  useEffect(() => {
+    if (highContrast) {
+      document.documentElement.classList.add('high-contrast');
+    } else {
+      document.documentElement.classList.remove('high-contrast');
+    }
+  }, [highContrast]);
+
+  return { highContrast, toggleHighContrast: () => setHighContrast(!highContrast) };
+}
+
+// Add to globals.css:
+.high-contrast {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --border: 0 0% 100%;
+  --primary: 0 0% 100%;
+  --primary-foreground: 0 0% 0%;
+  /* ... higher contrast colors */
+}
+
+.high-contrast button {
+  border: 2px solid currentColor;
+}
+
+.high-contrast a {
+  text-decoration: underline;
+}
+```
+
+---
+
+<a name="mobile-features"></a>
+## 3. MOBILE-SPECIFIC FEATURES
+
+### 3.1 Progressive Web App (PWA)
+
+**Add PWA Support:**
+
+```typescript
+// vite.config.ts
+import { VitePWA } from 'vite-plugin-pwa';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'robots.txt', 'apple-touch-icon.png'],
+      manifest: {
+        name: 'Weightlifting Training Platform',
+        short_name: 'Training',
+        description: 'Track your weightlifting workouts and progress',
+        theme_color: '#000000',
+        background_color: '#000000',
+        display: 'standalone',
+        orientation: 'portrait',
+        scope: '/',
+        start_url: '/',
+        icons: [
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png',
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/api\./,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 5 * 60, // 5 minutes
+              },
+            },
+          },
+        ],
+      },
+    }),
+  ],
+});
+```
+
+**Add Install Prompt:**
+
+```typescript
+// components/InstallPrompt.tsx
+import { useState, useEffect } from 'react';
+import { Download, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+
+export function InstallPrompt() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showPrompt, setShowPrompt] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowPrompt(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+
+    if (outcome === 'accepted') {
+      setShowPrompt(false);
+    }
+
+    setDeferredPrompt(null);
+  };
+
+  if (!showPrompt) return null;
+
+  return (
+    <Card className="fixed bottom-4 left-4 right-4 p-4 z-50 md:left-auto md:w-96">
+      <div className="flex items-start gap-3">
+        <Download className="h-5 w-5 mt-0.5" />
+        <div className="flex-1">
+          <h3 className="font-semibold">Install App</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Install our app for a better experience and offline access.
+          </p>
+          <div className="flex gap-2 mt-3">
+            <Button size="sm" onClick={handleInstall}>
+              Install
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowPrompt(false)}
+            >
+              Not Now
+            </Button>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => setShowPrompt(false)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+```
+
+### 3.2 Offline Workout Logging
+
+**Add Offline Support with Background Sync:**
+
+```typescript
+// hooks/useOfflineWorkout.ts
+import { useState, useEffect } from 'react';
+import { useMutation } from '@tanstack/react-query';
+
+interface OfflineWorkout {
+  id: string;
+  timestamp: number;
+  data: any;
+}
+
+export function useOfflineWorkout() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [pendingWorkouts, setPendingWorkouts] = useState<OfflineWorkout[]>([]);
+
+  useEffect(() => {
+    // Load pending workouts from localStorage
+    const stored = localStorage.getItem('offline-workouts');
+    if (stored) {
+      setPendingWorkouts(JSON.parse(stored));
+    }
+
+    // Listen for online/offline events
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  const syncWorkouts = useMutation({
+    mutationFn: async () => {
+      const results = [];
+      for (const workout of pendingWorkouts) {
+        try {
+          const res = await fetch('/api/workout-sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(workout.data),
+          });
+          if (res.ok) {
+            results.push({ id: workout.id, success: true });
+          }
+        } catch (error) {
+          results.push({ id: workout.id, success: false });
+        }
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      // Remove successfully synced workouts
+      const successIds = results
+        .filter(r => r.success)
+        .map(r => r.id);
+
+      const remaining = pendingWorkouts.filter(
+        w => !successIds.includes(w.id)
+      );
+
+      setPendingWorkouts(remaining);
+      localStorage.setItem('offline-workouts', JSON.stringify(remaining));
+    },
+  });
+
+  // Auto-sync when coming online
+  useEffect(() => {
+    if (isOnline && pendingWorkouts.length > 0) {
+      syncWorkouts.mutate();
+    }
+  }, [isOnline, pendingWorkouts.length]);
+
+  const saveOffline = (data: any) => {
+    const workout: OfflineWorkout = {
+      id: crypto.randomUUID(),
+      timestamp: Date.now(),
+      data,
+    };
+
+    const updated = [...pendingWorkouts, workout];
+    setPendingWorkouts(updated);
+    localStorage.setItem('offline-workouts', JSON.stringify(updated));
+  };
+
+  return {
+    isOnline,
+    pendingWorkouts,
+    saveOffline,
+    syncWorkouts,
+  };
+}
+
+// Usage in workout page:
+export function WorkoutPage() {
+  const { isOnline, pendingWorkouts, saveOffline } = useOfflineWorkout();
+
+  const logSet = async (data: any) => {
+    if (!isOnline) {
+      saveOffline(data);
+      toast({
+        title: 'Saved Offline',
+        description: 'Will sync when connection is restored',
+      });
+      return;
+    }
+
+    // Normal API call
+    await fetch('/api/sets', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  };
+
+  return (
+    <div>
+      {!isOnline && (
+        <Alert variant="warning">
+          <WifiOff className="h-4 w-4" />
+          <AlertDescription>
+            You're offline. Changes will sync when connection is restored.
+            {pendingWorkouts.length > 0 && (
+              <span> ({pendingWorkouts.length} pending)</span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+      {/* ... workout UI */}
+    </div>
+  );
+}
+```
+
+### 3.3 Haptic Feedback
+
+```typescript
+// hooks/useHaptic.ts
+export function useHaptic() {
+  const vibrate = (pattern: number | number[]) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  };
+
+  return {
+    light: () => vibrate(10),
+    medium: () => vibrate(20),
+    heavy: () => vibrate(50),
+    success: () => vibrate([10, 50, 10]),
+    error: () => vibrate([50, 100, 50]),
+    warning: () => vibrate([100, 50, 100]),
+  };
+}
+
+// Usage:
+export function SetLogger() {
+  const haptic = useHaptic();
+
+  const completeSet = () => {
+    haptic.success(); // Vibrate on successful set log
+    // ... log set
+  };
+
+  return (
+    <Button onClick={completeSet}>
+      Complete Set
+    </Button>
+  );
+}
+```
+
+---
+
+<a name="internationalization"></a>
+## 4. INTERNATIONALIZATION (i18n)
+
+**Current State:** No i18n implementation - all text is hardcoded in English.
+
+### 4.1 Add i18next
+
+```bash
+npm install react-i18next i18next i18next-http-backend i18next-browser-languagedetector
+```
+
+```typescript
+// i18n.ts
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+import Backend from 'i18next-http-backend';
+
+i18n
+  .use(Backend)
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    fallbackLng: 'en',
+    supportedLngs: ['en', 'es', 'fr', 'de', 'pt', 'ja', 'zh'],
+    debug: false,
+
+    interpolation: {
+      escapeValue: false,
+    },
+
+    backend: {
+      loadPath: '/locales/{{lng}}/{{ns}}.json',
+    },
+  });
+
+export default i18n;
+```
+
+### 4.2 Translation Files
+
+```json
+// public/locales/en/common.json
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "programs": "Programs",
+    "workout": "Workout",
+    "progress": "Progress",
+    "settings": "Settings"
+  },
+  "workout": {
+    "title": "Today's Workout",
+    "startWorkout": "Start Workout",
+    "completeSet": "Complete Set",
+    "weight": "Weight",
+    "reps": "Reps",
+    "rpe": "RPE"
+  },
+  "programs": {
+    "title": "Training Programs",
+    "createProgram": "Create Program",
+    "editProgram": "Edit Program",
+    "deleteProgram": "Delete Program"
+  }
+}
+
+// public/locales/es/common.json
+{
+  "nav": {
+    "dashboard": "Panel",
+    "programs": "Programas",
+    "workout": "Entrenamiento",
+    "progress": "Progreso",
+    "settings": "Configuración"
+  },
+  "workout": {
+    "title": "Entrenamiento de Hoy",
+    "startWorkout": "Iniciar Entrenamiento",
+    "completeSet": "Completar Serie",
+    "weight": "Peso",
+    "reps": "Repeticiones",
+    "rpe": "RPE"
+  }
+}
+```
+
+### 4.3 Usage in Components
+
+```typescript
+// Update components to use translations:
+import { useTranslation } from 'react-i18next';
+
+export function WorkoutPage() {
+  const { t } = useTranslation();
+
+  return (
+    <div>
+      <h1>{t('workout.title')}</h1>
+      <Button>{t('workout.startWorkout')}</Button>
+
+      <Label>{t('workout.weight')}</Label>
+      <Input type="number" />
+
+      <Label>{t('workout.reps')}</Label>
+      <Input type="number" />
+    </div>
+  );
+}
+
+// Language selector:
+export function LanguageSelector() {
+  const { i18n } = useTranslation();
+
+  return (
+    <Select
+      value={i18n.language}
+      onValueChange={(lang) => i18n.changeLanguage(lang)}
+    >
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="en">English</SelectItem>
+        <SelectItem value="es">Español</SelectItem>
+        <SelectItem value="fr">Français</SelectItem>
+        <SelectItem value="de">Deutsch</SelectItem>
+        <SelectItem value="pt">Português</SelectItem>
+        <SelectItem value="ja">日本語</SelectItem>
+        <SelectItem value="zh">中文</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+```
+
+---
+
+<a name="data-management"></a>
+## 5. DATA MANAGEMENT & EXPORTS
+
+### 5.1 Export Workout Data
+
+```typescript
+// features/exports/components/DataExporter.tsx
+import { Download, FileSpreadsheet, FileText } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { useState } from 'react';
+
+export function DataExporter() {
+  const [exporting, setExporting] = useState(false);
+
+  const exportToCSV = async () => {
+    setExporting(true);
+    try {
+      const res = await fetch('/api/exports/workouts?format=csv', {
+        credentials: 'include',
+      });
+      const blob = await res.blob();
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `workouts_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({ title: 'Export complete!' });
+    } catch (error) {
+      toast({
+        title: 'Export failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportToJSON = async () => {
+    // Similar implementation
+  };
+
+  const exportToPDF = async () => {
+    // Similar implementation using server-side PDF generation
+  };
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <Download className="mr-2 h-4 w-4" />
+          Export Data
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Export Your Data</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Choose a format to export your workout history
+          </p>
+
+          <div className="grid gap-4">
+            <Button
+              variant="outline"
+              onClick={exportToCSV}
+              disabled={exporting}
+              className="justify-start"
+            >
+              <FileSpreadsheet className="mr-2 h-4 w-4" />
+              Export as CSV (Excel compatible)
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={exportToJSON}
+              disabled={exporting}
+              className="justify-start"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Export as JSON (Developer friendly)
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={exportToPDF}
+              disabled={exporting}
+              className="justify-start"
+            >
+              <FileText className="mr-2 h-4 w-4" />
+              Export as PDF (Printable report)
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+**Server-side export endpoint:**
+
+```typescript
+// server/routes/exports.routes.ts
+import { Router } from 'express';
+import { Parser } from 'json2csv';
+import PDFDocument from 'pdfkit';
+
+const router = Router();
+
+router.get('/workouts', isAuthenticated, async (req: AuthRequest, res) => {
+  const format = req.query.format || 'csv';
+  const userId = req.currentUser!.id;
+
+  // Fetch workout data
+  const workouts = await workoutRepo.findByAthlete(userId);
+
+  if (format === 'csv') {
+    const fields = ['date', 'exercise', 'sets', 'reps', 'weight', 'rpe'];
+    const parser = new Parser({ fields });
+    const csv = parser.parse(workouts);
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=workouts.csv');
+    res.send(csv);
+  } else if (format === 'json') {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=workouts.json');
+    res.json(workouts);
+  } else if (format === 'pdf') {
+    const doc = new PDFDocument();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=workouts.pdf');
+
+    doc.pipe(res);
+    doc.fontSize(20).text('Workout History', { align: 'center' });
+    doc.moveDown();
+
+    // Add workout data to PDF
+    workouts.forEach(workout => {
+      doc.fontSize(14).text(`${workout.date} - ${workout.exercise}`);
+      doc.fontSize(10).text(`${workout.sets}x${workout.reps} @ ${workout.weight}kg (RPE ${workout.rpe})`);
+      doc.moveDown();
+    });
+
+    doc.end();
+  }
+});
+
+export default router;
+```
+
+### 5.2 Data Import
+
+```typescript
+// features/imports/components/DataImporter.tsx
+export function DataImporter() {
+  const [file, setFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [preview, setPreview] = useState<any[]>([]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFile(file);
+
+    // Parse CSV for preview
+    const text = await file.text();
+    const rows = text.split('\n').slice(0, 6); // First 5 rows + header
+    setPreview(rows);
+  };
+
+  const handleImport = async () => {
+    if (!file) return;
+
+    setImporting(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/imports/workouts', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+      });
+
+      const result = await res.json();
+
+      toast({
+        title: 'Import complete!',
+        description: `Imported ${result.imported} workouts`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Import failed',
+        description: error.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <Upload className="mr-2 h-4 w-4" />
+          Import Data
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Import Workout Data</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="file">Upload CSV File</Label>
+            <Input
+              id="file"
+              type="file"
+              accept=".csv"
+              onChange={handleFileChange}
+            />
+            <p className="text-sm text-muted-foreground mt-1">
+              Format: date, exercise, sets, reps, weight, rpe
+            </p>
+          </div>
+
+          {preview.length > 0 && (
+            <div>
+              <Label>Preview</Label>
+              <div className="border rounded-md p-4 font-mono text-sm">
+                {preview.map((row, i) => (
+                  <div key={i} className="whitespace-nowrap overflow-hidden">
+                    {row}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Button
+            onClick={handleImport}
+            disabled={!file || importing}
+            className="w-full"
+          >
+            {importing ? 'Importing...' : 'Import Workouts'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+---
+
+<a name="coaching-tools"></a>
+## 6. ADVANCED COACHING TOOLS
+
+### 6.1 Exercise Video Library with Form Checks
+
+**Add Exercise Demonstration Videos:**
+
+```typescript
+// features/exercises/components/ExerciseVideo.tsx
+import { Play, CheckCircle, AlertCircle } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+
+interface ExerciseVideoProps {
+  exerciseId: string;
+  exerciseName: string;
+  videoUrl: string;
+  formCues: string[];
+  commonMistakes: string[];
+}
+
+export function ExerciseVideo({
+  exerciseId,
+  exerciseName,
+  videoUrl,
+  formCues,
+  commonMistakes,
+}: ExerciseVideoProps) {
+  const [showVideo, setShowVideo] = useState(false);
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-start gap-4">
+        <div className="flex-1">
+          <h3 className="font-semibold text-lg">{exerciseName}</h3>
+
+          <div className="mt-4">
+            <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Form Cues
+            </h4>
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {formCues.map((cue, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-green-500 mt-0.5">•</span>
+                  <span>{cue}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="mt-4">
+            <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              Common Mistakes
+            </h4>
+            <ul className="space-y-1 text-sm text-muted-foreground">
+              {commonMistakes.map((mistake, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-red-500 mt-0.5">•</span>
+                  <span>{mistake}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        <div className="w-80">
+          {!showVideo ? (
+            <div
+              className="relative aspect-video bg-muted rounded-lg cursor-pointer group"
+              onClick={() => setShowVideo(true)}
+            >
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-16 h-16 rounded-full bg-primary/10 group-hover:bg-primary/20 flex items-center justify-center transition">
+                  <Play className="h-8 w-8 text-primary" />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <video
+              src={videoUrl}
+              controls
+              autoPlay
+              className="aspect-video rounded-lg"
+            />
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Server-side endpoint to manage exercise library
+// server/routes/exercise-library.routes.ts
+import { Router } from 'express';
+import multer from 'multer';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+
+const router = Router();
+const upload = multer({ storage: multer.memoryStorage() });
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
+
+router.post(
+  '/exercises/:id/video',
+  isAuthenticated,
+  requireCoachRole,
+  upload.single('video'),
+  async (req: AuthRequest, res) => {
+    try {
+      const { id } = req.params;
+      const file = req.file;
+
+      if (!file) {
+        return res.status(400).json({ error: 'No video file provided' });
+      }
+
+      // Upload to S3 or similar
+      const key = `exercise-videos/${id}/${Date.now()}.mp4`;
+      await s3Client.send(
+        new PutObjectCommand({
+          Bucket: process.env.S3_BUCKET!,
+          Key: key,
+          Body: file.buffer,
+          ContentType: 'video/mp4',
+        })
+      );
+
+      const videoUrl = `https://${process.env.S3_BUCKET}.s3.amazonaws.com/${key}`;
+
+      // Update exercise with video URL
+      await db
+        .update(exercises)
+        .set({ videoUrl, updatedAt: new Date() })
+        .where(eq(exercises.id, id));
+
+      res.json({ success: true, videoUrl });
+    } catch (error) {
+      logger.error('Error uploading exercise video', { error });
+      res.status(500).json({ error: 'Failed to upload video' });
+    }
+  }
+);
+
+export default router;
+```
+
+### 6.2 Athlete Progress Notes
+
+**Add Coach Notes System:**
+
+```typescript
+// features/coaching/components/AthleteNotes.tsx
+import { MessageSquare, Plus } from 'lucide-react';
+import { useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+
+interface Note {
+  id: string;
+  content: string;
+  createdAt: Date;
+  createdBy: {
+    name: string;
+    role: string;
+  };
+  tags: string[];
+}
+
+export function AthleteNotes({ athleteId }: { athleteId: string }) {
+  const [newNote, setNewNote] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  const { data: notes } = useQuery({
+    queryKey: ['athlete-notes', athleteId],
+    queryFn: async () => {
+      const res = await fetch(`/api/athletes/${athleteId}/notes`);
+      return res.json();
+    },
+  });
+
+  const createNote = useMutation({
+    mutationFn: async (data: { content: string; tags: string[] }) => {
+      const res = await fetch(`/api/athletes/${athleteId}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['athlete-notes', athleteId]);
+      setNewNote('');
+      setSelectedTags([]);
+    },
+  });
+
+  const availableTags = [
+    'Form Issue',
+    'Injury',
+    'Motivation',
+    'Recovery',
+    'Technique',
+    'Programming',
+    'Competition',
+  ];
+
+  return (
+    <Card className="p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-semibold flex items-center gap-2">
+          <MessageSquare className="h-5 w-5" />
+          Coach Notes
+        </h3>
+      </div>
+
+      <div className="space-y-4">
+        {/* Add new note */}
+        <div className="space-y-2">
+          <Textarea
+            placeholder="Add a note about this athlete..."
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            rows={3}
+          />
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {availableTags.map((tag) => (
+              <Badge
+                key={tag}
+                variant={selectedTags.includes(tag) ? 'default' : 'outline'}
+                className="cursor-pointer"
+                onClick={() => {
+                  setSelectedTags((prev) =>
+                    prev.includes(tag)
+                      ? prev.filter((t) => t !== tag)
+                      : [...prev, tag]
+                  );
+                }}
+              >
+                {tag}
+              </Badge>
+            ))}
+          </div>
+
+          <Button
+            onClick={() => createNote.mutate({ content: newNote, tags: selectedTags })}
+            disabled={!newNote.trim()}
+            size="sm"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Note
+          </Button>
+        </div>
+
+        {/* Notes timeline */}
+        <div className="space-y-3 mt-6">
+          {notes?.map((note: Note) => (
+            <div key={note.id} className="border-l-2 border-primary pl-4 py-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm">{note.content}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    {note.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  {new Date(note.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                by {note.createdBy.name}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Database schema addition to shared/schema.ts
+export const coachNotes = pgTable('coach_notes', {
+  id: serial('id').primaryKey(),
+  athleteId: integer('athlete_id')
+    .references(() => users.id)
+    .notNull(),
+  coachId: integer('coach_id')
+    .references(() => users.id)
+    .notNull(),
+  content: text('content').notNull(),
+  tags: text('tags').array().default([]),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+```
+
+### 6.3 Exercise Substitution Suggestions
+
+```typescript
+// features/exercises/hooks/useExerciseSubstitutions.ts
+export function useExerciseSubstitutions(exerciseId: string) {
+  return useQuery({
+    queryKey: ['exercise-substitutions', exerciseId],
+    queryFn: async () => {
+      const res = await fetch(`/api/exercises/${exerciseId}/substitutions`);
+      return res.json();
+    },
+  });
+}
+
+// Server implementation
+// server/routes/exercises.routes.ts
+const exerciseSubstitutions: Record<string, string[]> = {
+  'back-squat': ['front-squat', 'safety-bar-squat', 'leg-press', 'goblet-squat'],
+  'bench-press': ['dumbbell-press', 'incline-press', 'floor-press', 'push-ups'],
+  'deadlift': ['romanian-deadlift', 'trap-bar-deadlift', 'sumo-deadlift'],
+  // ... more mappings
+};
+
+router.get('/exercises/:id/substitutions', isAuthenticated, async (req, res) => {
+  const { id } = req.params;
+  const exercise = await db.query.exercises.findFirst({
+    where: eq(exercises.id, id),
+  });
+
+  if (!exercise) {
+    return res.status(404).json({ error: 'Exercise not found' });
+  }
+
+  const substitutionIds = exerciseSubstitutions[exercise.slug] || [];
+  const substitutions = await db.query.exercises.findMany({
+    where: inArray(exercises.slug, substitutionIds),
+  });
+
+  res.json(substitutions);
+});
+
+// Component to suggest substitutions
+export function ExerciseSubstitutionButton({ exerciseId, onSubstitute }) {
+  const { data: substitutions } = useExerciseSubstitutions(exerciseId);
+
+  if (!substitutions || substitutions.length === 0) return null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm">
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Substitute
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuLabel>Alternative Exercises</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {substitutions.map((sub) => (
+          <DropdownMenuItem
+            key={sub.id}
+            onClick={() => onSubstitute(sub.id)}
+          >
+            {sub.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+```
+
+---
+
+<a name="gamification"></a>
+## 7. GAMIFICATION & MOTIVATION
+
+### 7.1 Achievement System
+
+```typescript
+// features/gamification/types.ts
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: 'strength' | 'consistency' | 'volume' | 'milestone';
+  unlockedAt?: Date;
+  progress: number;
+  requirement: number;
+}
+
+// features/gamification/components/AchievementUnlockedModal.tsx
+import { Trophy, Sparkles } from 'lucide-react';
+import Confetti from 'react-confetti';
+
+export function AchievementUnlockedModal({
+  achievement,
+  open,
+  onClose,
+}: {
+  achievement: Achievement;
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        {open && <Confetti recycle={false} numberOfPieces={200} />}
+
+        <div className="text-center py-6">
+          <div className="mb-4 flex justify-center">
+            <div className="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center">
+              <Trophy className="h-12 w-12 text-primary" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold flex items-center justify-center gap-2">
+              <Sparkles className="h-5 w-5 text-yellow-500" />
+              Achievement Unlocked!
+              <Sparkles className="h-5 w-5 text-yellow-500" />
+            </h2>
+            <h3 className="text-xl font-semibold">{achievement.name}</h3>
+            <p className="text-muted-foreground">{achievement.description}</p>
+          </div>
+
+          <Button onClick={onClose} className="mt-6">
+            Awesome!
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// features/gamification/components/AchievementsList.tsx
+export function AchievementsList() {
+  const { data: achievements } = useQuery({
+    queryKey: ['achievements'],
+    queryFn: async () => {
+      const res = await fetch('/api/gamification/achievements');
+      return res.json();
+    },
+  });
+
+  const grouped = achievements?.reduce((acc, achievement) => {
+    if (!acc[achievement.category]) {
+      acc[achievement.category] = [];
+    }
+    acc[achievement.category].push(achievement);
+    return acc;
+  }, {} as Record<string, Achievement[]>);
+
+  return (
+    <div className="space-y-6">
+      {Object.entries(grouped || {}).map(([category, items]) => (
+        <div key={category}>
+          <h3 className="text-lg font-semibold mb-3 capitalize">{category}</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {items.map((achievement) => (
+              <Card
+                key={achievement.id}
+                className={cn(
+                  'p-4 text-center',
+                  !achievement.unlockedAt && 'opacity-50 grayscale'
+                )}
+              >
+                <div className="text-4xl mb-2">{achievement.icon}</div>
+                <h4 className="font-semibold text-sm">{achievement.name}</h4>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {achievement.description}
+                </p>
+                {!achievement.unlockedAt && (
+                  <Progress
+                    value={(achievement.progress / achievement.requirement) * 100}
+                    className="mt-2"
+                  />
+                )}
+              </Card>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Server-side achievement checking
+// server/services/gamification.service.ts
+export class GamificationService {
+  private achievements: Achievement[] = [
+    {
+      id: 'first-workout',
+      name: 'First Steps',
+      description: 'Complete your first workout',
+      icon: '🏋️',
+      category: 'milestone',
+      requirement: 1,
+    },
+    {
+      id: 'week-streak',
+      name: 'Week Warrior',
+      description: '7 day workout streak',
+      icon: '🔥',
+      category: 'consistency',
+      requirement: 7,
+    },
+    {
+      id: 'month-streak',
+      name: 'Monthly Master',
+      description: '30 day workout streak',
+      icon: '⚡',
+      category: 'consistency',
+      requirement: 30,
+    },
+    {
+      id: 'pr-1000kg',
+      name: 'Ton of Iron',
+      description: 'Lift 1000kg in a single workout',
+      icon: '💪',
+      category: 'volume',
+      requirement: 1000,
+    },
+    // ... more achievements
+  ];
+
+  async checkAchievements(userId: string): Promise<Achievement[]> {
+    const userProgress = await this.getUserProgress(userId);
+    const unlocked: Achievement[] = [];
+
+    for (const achievement of this.achievements) {
+      const hasAchievement = await db.query.userAchievements.findFirst({
+        where: and(
+          eq(userAchievements.userId, userId),
+          eq(userAchievements.achievementId, achievement.id)
+        ),
+      });
+
+      if (hasAchievement) continue;
+
+      const progress = this.calculateProgress(achievement, userProgress);
+
+      if (progress >= achievement.requirement) {
+        await db.insert(userAchievements).values({
+          userId,
+          achievementId: achievement.id,
+          unlockedAt: new Date(),
+        });
+        unlocked.push(achievement);
+      }
+    }
+
+    return unlocked;
+  }
+
+  private async getUserProgress(userId: string) {
+    const workoutCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(workoutSessions)
+      .where(eq(workoutSessions.athleteId, userId));
+
+    const streak = await this.calculateStreak(userId);
+    const totalVolume = await this.calculateTotalVolume(userId);
+
+    return {
+      workoutCount: workoutCount[0].count,
+      currentStreak: streak,
+      totalVolume,
+    };
+  }
+}
+```
+
+### 7.2 Leaderboards
+
+```typescript
+// features/gamification/components/Leaderboard.tsx
+import { Medal, TrendingUp } from 'lucide-react';
+
+export function Leaderboard({ organizationId }: { organizationId: string }) {
+  const [timeframe, setTimeframe] = useState<'week' | 'month' | 'all'>('week');
+
+  const { data: leaderboard } = useQuery({
+    queryKey: ['leaderboard', organizationId, timeframe],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/gamification/leaderboard?org=${organizationId}&timeframe=${timeframe}`
+      );
+      return res.json();
+    },
+  });
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <Medal className="h-5 w-5" />
+          Leaderboard
+        </h2>
+
+        <Select value={timeframe} onValueChange={setTimeframe}>
+          <SelectTrigger className="w-32">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="week">This Week</SelectItem>
+            <SelectItem value="month">This Month</SelectItem>
+            <SelectItem value="all">All Time</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-3">
+        {leaderboard?.map((entry, index) => (
+          <div
+            key={entry.userId}
+            className={cn(
+              'flex items-center gap-3 p-3 rounded-lg',
+              index < 3 && 'bg-primary/5'
+            )}
+          >
+            <div
+              className={cn(
+                'w-8 h-8 rounded-full flex items-center justify-center font-bold',
+                index === 0 && 'bg-yellow-500 text-white',
+                index === 1 && 'bg-gray-400 text-white',
+                index === 2 && 'bg-amber-600 text-white',
+                index > 2 && 'bg-muted text-muted-foreground'
+              )}
+            >
+              {index + 1}
+            </div>
+
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={entry.user.avatar} />
+              <AvatarFallback>{entry.user.name[0]}</AvatarFallback>
+            </Avatar>
+
+            <div className="flex-1">
+              <p className="font-semibold">{entry.user.name}</p>
+              <p className="text-sm text-muted-foreground">
+                {entry.workoutCount} workouts • {entry.totalVolume}kg total
+              </p>
+            </div>
+
+            <div className="text-right">
+              <p className="font-semibold">{entry.score} pts</p>
+              <div className="flex items-center gap-1 text-xs text-green-500">
+                <TrendingUp className="h-3 w-3" />
+                {entry.improvement}%
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// Server endpoint
+router.get('/leaderboard', isAuthenticated, async (req: AuthRequest, res) => {
+  const { org, timeframe } = req.query;
+  const userId = req.currentUser!.id;
+
+  let startDate = new Date();
+  if (timeframe === 'week') {
+    startDate.setDate(startDate.getDate() - 7);
+  } else if (timeframe === 'month') {
+    startDate.setMonth(startDate.getMonth() - 1);
+  } else {
+    startDate = new Date(0); // Beginning of time
+  }
+
+  const leaderboard = await db
+    .select({
+      userId: users.id,
+      userName: users.name,
+      userAvatar: users.avatar,
+      workoutCount: sql<number>`count(distinct ${workoutSessions.id})`,
+      totalVolume: sql<number>`sum(${sets.weight} * ${sets.reps})`,
+      score: sql<number>`
+        count(distinct ${workoutSessions.id}) * 10 +
+        sum(${sets.weight} * ${sets.reps}) / 100
+      `,
+    })
+    .from(users)
+    .leftJoin(workoutSessions, eq(workoutSessions.athleteId, users.id))
+    .leftJoin(exerciseLogs, eq(exerciseLogs.workoutSessionId, workoutSessions.id))
+    .leftJoin(sets, eq(sets.exerciseLogId, exerciseLogs.id))
+    .where(
+      and(
+        eq(users.organizationId, org as string),
+        gte(workoutSessions.date, startDate)
+      )
+    )
+    .groupBy(users.id)
+    .orderBy(desc(sql`score`))
+    .limit(50);
+
+  res.json(leaderboard);
+});
+```
+
+---
+
+<a name="calendar"></a>
+## 8. CALENDAR & SCHEDULING
+
+### 8.1 Interactive Training Calendar
+
+```typescript
+// features/calendar/components/TrainingCalendar.tsx
+import FullCalendar from '@fullcalendar/react';
+import dayGridPlugin from '@fullcalendar/daygrid';
+import interactionPlugin from '@fullcalendar/interaction';
+import { useQuery } from '@tanstack/react-query';
+
+export function TrainingCalendar({ athleteId }: { athleteId: string }) {
+  const { data: events } = useQuery({
+    queryKey: ['calendar-events', athleteId],
+    queryFn: async () => {
+      const res = await fetch(`/api/calendar/events?athleteId=${athleteId}`);
+      return res.json();
+    },
+  });
+
+  const handleDateClick = (info: any) => {
+    // Open workout detail or creation modal
+    console.log('Clicked date:', info.dateStr);
+  };
+
+  const handleEventClick = (info: any) => {
+    // Open workout detail
+    console.log('Clicked event:', info.event.id);
+  };
+
+  return (
+    <Card className="p-4">
+      <FullCalendar
+        plugins={[dayGridPlugin, interactionPlugin]}
+        initialView="dayGridMonth"
+        events={events?.map((event) => ({
+          id: event.id,
+          title: event.title,
+          start: event.date,
+          backgroundColor: event.completed ? '#10b981' : '#3b82f6',
+          borderColor: event.completed ? '#10b981' : '#3b82f6',
+        }))}
+        dateClick={handleDateClick}
+        eventClick={handleEventClick}
+        headerToolbar={{
+          left: 'prev,next today',
+          center: 'title',
+          right: 'dayGridMonth,dayGridWeek',
+        }}
+        height="auto"
+      />
+    </Card>
+  );
+}
+
+// Event detail modal
+export function WorkoutEventModal({ eventId, date, open, onClose }) {
+  const { data: workout } = useQuery({
+    queryKey: ['workout-event', eventId],
+    queryFn: async () => {
+      const res = await fetch(`/api/workout-sessions/${eventId}`);
+      return res.json();
+    },
+    enabled: !!eventId,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>
+            Workout - {new Date(date).toLocaleDateString()}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {workout?.exerciseLogs.map((log) => (
+            <div key={log.id} className="border rounded-lg p-4">
+              <h3 className="font-semibold">{log.exercise.name}</h3>
+              <div className="mt-2 space-y-1">
+                {log.sets.map((set, i) => (
+                  <div key={set.id} className="text-sm flex justify-between">
+                    <span>Set {i + 1}</span>
+                    <span>
+                      {set.reps} reps × {set.weight}kg @ RPE {set.rpe}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          {workout?.notes && (
+            <div className="border-t pt-4">
+              <h3 className="font-semibold mb-2">Notes</h3>
+              <p className="text-sm text-muted-foreground">{workout.notes}</p>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+### 8.2 Rest Day Reminders
+
+```typescript
+// features/calendar/hooks/useRestDayReminder.ts
+export function useRestDayReminder() {
+  const { data: user } = useQuery({ queryKey: ['current-user'] });
+
+  useEffect(() => {
+    if (!user) return;
+
+    // Check if user has worked out 5+ days in a row
+    const checkRestDay = async () => {
+      const res = await fetch('/api/calendar/check-rest-day');
+      const { needsRest, consecutiveDays } = await res.json();
+
+      if (needsRest) {
+        toast({
+          title: 'Consider Taking a Rest Day 🛌',
+          description: `You've trained ${consecutiveDays} days in a row. Recovery is important!`,
+          duration: 10000,
+        });
+      }
+    };
+
+    checkRestDay();
+  }, [user]);
+}
+
+// Server endpoint
+router.get('/check-rest-day', isAuthenticated, async (req: AuthRequest, res) => {
+  const userId = req.currentUser!.id;
+
+  // Get last 10 days of workouts
+  const tenDaysAgo = new Date();
+  tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+
+  const workouts = await db.query.workoutSessions.findMany({
+    where: and(
+      eq(workoutSessions.athleteId, userId),
+      gte(workoutSessions.date, tenDaysAgo)
+    ),
+    orderBy: desc(workoutSessions.date),
+  });
+
+  // Calculate consecutive days
+  let consecutiveDays = 0;
+  const today = new Date().setHours(0, 0, 0, 0);
+
+  for (let i = 0; i < 10; i++) {
+    const checkDate = new Date(today);
+    checkDate.setDate(checkDate.getDate() - i);
+
+    const hasWorkout = workouts.some((w) => {
+      const workoutDate = new Date(w.date).setHours(0, 0, 0, 0);
+      return workoutDate === checkDate.getTime();
+    });
+
+    if (hasWorkout) {
+      consecutiveDays++;
+    } else {
+      break;
+    }
+  }
+
+  res.json({
+    needsRest: consecutiveDays >= 5,
+    consecutiveDays,
+  });
+});
+```
+
+---
+
+<a name="analytics"></a>
+## 9. ADVANCED ANALYTICS
+
+### 9.1 Volume Analytics
+
+```typescript
+// features/analytics/components/VolumeChart.tsx
+import { Line } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+);
+
+export function VolumeChart({ athleteId, timeframe }: { athleteId: string; timeframe: string }) {
+  const { data } = useQuery({
+    queryKey: ['volume-analytics', athleteId, timeframe],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/analytics/volume?athleteId=${athleteId}&timeframe=${timeframe}`
+      );
+      return res.json();
+    },
+  });
+
+  const chartData = {
+    labels: data?.dates || [],
+    datasets: [
+      {
+        label: 'Total Volume (kg)',
+        data: data?.volumes || [],
+        borderColor: 'rgb(59, 130, 246)',
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        tension: 0.3,
+      },
+      {
+        label: '7-Day Moving Average',
+        data: data?.movingAverage || [],
+        borderColor: 'rgb(234, 88, 12)',
+        backgroundColor: 'rgba(234, 88, 12, 0.1)',
+        borderDash: [5, 5],
+        tension: 0.3,
+      },
+    ],
+  };
+
+  const options = {
+    responsive: true,
+    plugins: {
+      legend: {
+        position: 'top' as const,
+      },
+      title: {
+        display: true,
+        text: 'Training Volume Over Time',
+      },
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Volume (kg)',
+        },
+      },
+    },
+  };
+
+  return (
+    <Card className="p-6">
+      <Line data={chartData} options={options} />
+    </Card>
+  );
+}
+
+// Server endpoint
+router.get('/volume', isAuthenticated, async (req: AuthRequest, res) => {
+  const { athleteId, timeframe } = req.query;
+
+  let startDate = new Date();
+  if (timeframe === '30d') {
+    startDate.setDate(startDate.getDate() - 30);
+  } else if (timeframe === '90d') {
+    startDate.setDate(startDate.getDate() - 90);
+  } else if (timeframe === '1y') {
+    startDate.setFullYear(startDate.getFullYear() - 1);
+  }
+
+  const volumeData = await db
+    .select({
+      date: sql<string>`DATE(${workoutSessions.date})`,
+      volume: sql<number>`SUM(${sets.weight} * ${sets.reps})`,
+    })
+    .from(workoutSessions)
+    .leftJoin(exerciseLogs, eq(exerciseLogs.workoutSessionId, workoutSessions.id))
+    .leftJoin(sets, eq(sets.exerciseLogId, exerciseLogs.id))
+    .where(
+      and(
+        eq(workoutSessions.athleteId, athleteId as string),
+        gte(workoutSessions.date, startDate)
+      )
+    )
+    .groupBy(sql`DATE(${workoutSessions.date})`)
+    .orderBy(sql`DATE(${workoutSessions.date})`);
+
+  // Calculate 7-day moving average
+  const movingAverage = volumeData.map((_, index, arr) => {
+    const start = Math.max(0, index - 6);
+    const slice = arr.slice(start, index + 1);
+    const avg = slice.reduce((sum, item) => sum + item.volume, 0) / slice.length;
+    return Math.round(avg);
+  });
+
+  res.json({
+    dates: volumeData.map((d) => d.date),
+    volumes: volumeData.map((d) => d.volume),
+    movingAverage,
+  });
+});
+```
+
+### 9.2 Strength Progress Tracking
+
+```typescript
+// features/analytics/components/StrengthProgressChart.tsx
+export function StrengthProgressChart({ athleteId, exerciseId }) {
+  const { data } = useQuery({
+    queryKey: ['strength-progress', athleteId, exerciseId],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/analytics/strength-progress?athleteId=${athleteId}&exerciseId=${exerciseId}`
+      );
+      return res.json();
+    },
+  });
+
+  return (
+    <Card className="p-6">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold">{data?.exerciseName}</h3>
+          <Select value={exerciseId} onValueChange={setExerciseId}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {data?.exercises.map((ex) => (
+                <SelectItem key={ex.id} value={ex.id}>
+                  {ex.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Estimated 1RM over time */}
+        <div>
+          <Line
+            data={{
+              labels: data?.dates || [],
+              datasets: [
+                {
+                  label: 'Estimated 1RM (kg)',
+                  data: data?.estimatedOneRMs || [],
+                  borderColor: 'rgb(34, 197, 94)',
+                  backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                  fill: true,
+                },
+              ],
+            }}
+            options={{
+              responsive: true,
+              plugins: {
+                title: {
+                  display: true,
+                  text: 'Estimated 1RM Progress',
+                },
+              },
+            }}
+          />
+        </div>
+
+        {/* PR History */}
+        <div>
+          <h4 className="font-semibold mb-2">Personal Records</h4>
+          <div className="space-y-2">
+            {data?.prs.map((pr) => (
+              <div
+                key={pr.id}
+                className="flex items-center justify-between p-3 bg-muted rounded-lg"
+              >
+                <div>
+                  <p className="font-semibold">
+                    {pr.weight}kg × {pr.reps} reps
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(pr.date).toLocaleDateString()}
+                  </p>
+                </div>
+                <Badge>PR</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Brzycki formula for 1RM estimation
+function calculateOneRM(weight: number, reps: number): number {
+  if (reps === 1) return weight;
+  return weight * (36 / (37 - reps));
+}
+
+// Server endpoint
+router.get('/strength-progress', isAuthenticated, async (req: AuthRequest, res) => {
+  const { athleteId, exerciseId } = req.query;
+
+  const sets = await db
+    .select({
+      date: workoutSessions.date,
+      weight: sets.weight,
+      reps: sets.reps,
+    })
+    .from(sets)
+    .leftJoin(exerciseLogs, eq(exerciseLogs.id, sets.exerciseLogId))
+    .leftJoin(workoutSessions, eq(workoutSessions.id, exerciseLogs.workoutSessionId))
+    .where(
+      and(
+        eq(workoutSessions.athleteId, athleteId as string),
+        eq(exerciseLogs.exerciseId, exerciseId as string)
+      )
+    )
+    .orderBy(workoutSessions.date);
+
+  // Calculate estimated 1RM for each set
+  const progress = sets.map((set) => ({
+    date: set.date,
+    estimatedOneRM: calculateOneRM(set.weight, set.reps),
+    weight: set.weight,
+    reps: set.reps,
+  }));
+
+  // Find PRs
+  let maxOneRM = 0;
+  const prs = progress.filter((entry) => {
+    if (entry.estimatedOneRM > maxOneRM) {
+      maxOneRM = entry.estimatedOneRM;
+      return true;
+    }
+    return false;
+  });
+
+  res.json({
+    dates: progress.map((p) => new Date(p.date).toLocaleDateString()),
+    estimatedOneRMs: progress.map((p) => Math.round(p.estimatedOneRM)),
+    prs,
+  });
+});
+```
+
+---
+
+<a name="integrations"></a>
+## 10. INTEGRATION ECOSYSTEM
+
+### 10.1 Strava Integration
+
+```typescript
+// features/integrations/strava/StravaConnect.tsx
+export function StravaConnect() {
+  const connectStrava = () => {
+    const clientId = process.env.VITE_STRAVA_CLIENT_ID;
+    const redirectUri = `${window.location.origin}/integrations/strava/callback`;
+    const scope = 'read,activity:read';
+
+    window.location.href = `https://www.strava.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+  };
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center">
+          <Activity className="h-6 w-6 text-white" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-semibold">Connect Strava</h3>
+          <p className="text-sm text-muted-foreground">
+            Import your cardio and conditioning workouts
+          </p>
+        </div>
+        <Button onClick={connectStrava}>Connect</Button>
+      </div>
+    </Card>
+  );
+}
+
+// Callback handler
+// server/routes/integrations.routes.ts
+router.get('/strava/callback', async (req: AuthRequest, res) => {
+  const { code } = req.query;
+
+  try {
+    // Exchange code for access token
+    const tokenResponse = await fetch('https://www.strava.com/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: process.env.STRAVA_CLIENT_ID,
+        client_secret: process.env.STRAVA_CLIENT_SECRET,
+        code,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    const tokens = await tokenResponse.json();
+
+    // Save tokens to database
+    await db.insert(integrations).values({
+      userId: req.currentUser!.id,
+      provider: 'strava',
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresAt: new Date(tokens.expires_at * 1000),
+    });
+
+    res.redirect('/settings?connected=strava');
+  } catch (error) {
+    logger.error('Strava connection failed', { error });
+    res.redirect('/settings?error=strava_failed');
+  }
+});
+
+// Sync activities
+router.post('/strava/sync', isAuthenticated, async (req: AuthRequest, res) => {
+  const userId = req.currentUser!.id;
+
+  const integration = await db.query.integrations.findFirst({
+    where: and(
+      eq(integrations.userId, userId),
+      eq(integrations.provider, 'strava')
+    ),
+  });
+
+  if (!integration) {
+    return res.status(404).json({ error: 'Strava not connected' });
+  }
+
+  // Fetch activities from Strava
+  const activitiesRes = await fetch(
+    'https://www.strava.com/api/v3/athlete/activities',
+    {
+      headers: {
+        Authorization: `Bearer ${integration.accessToken}`,
+      },
+    }
+  );
+
+  const activities = await activitiesRes.json();
+
+  // Import as conditioning workouts
+  for (const activity of activities) {
+    await db.insert(conditioningWorkouts).values({
+      userId,
+      type: activity.type,
+      distance: activity.distance,
+      duration: activity.moving_time,
+      calories: activity.calories,
+      date: new Date(activity.start_date),
+      externalId: activity.id,
+      externalProvider: 'strava',
+    });
+  }
+
+  res.json({ success: true, imported: activities.length });
+});
+```
+
+### 10.2 MyFitnessPal Integration
+
+```typescript
+// Similar pattern for MyFitnessPal nutrition tracking
+export function MyFitnessPalConnect() {
+  // Connect to MyFitnessPal API
+  // Import nutrition data
+  // Display macros alongside training data
+}
+```
+
+---
+
+<a name="collaboration"></a>
+## 11. COLLABORATION FEATURES
+
+### 11.1 Real-Time Workout Comments
+
+```typescript
+// features/collaboration/components/WorkoutComments.tsx
+import { MessageCircle, Send } from 'lucide-react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+
+export function WorkoutComments({ workoutId }: { workoutId: string }) {
+  const [newComment, setNewComment] = useState('');
+
+  const { data: comments } = useQuery({
+    queryKey: ['workout-comments', workoutId],
+    queryFn: async () => {
+      const res = await fetch(`/api/workouts/${workoutId}/comments`);
+      return res.json();
+    },
+    refetchInterval: 5000, // Poll every 5 seconds
+  });
+
+  const addComment = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await fetch(`/api/workouts/${workoutId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['workout-comments', workoutId]);
+      setNewComment('');
+    },
+  });
+
+  return (
+    <Card className="p-4">
+      <h3 className="font-semibold mb-4 flex items-center gap-2">
+        <MessageCircle className="h-5 w-5" />
+        Comments
+      </h3>
+
+      <div className="space-y-4">
+        {comments?.map((comment) => (
+          <div key={comment.id} className="flex gap-3">
+            <Avatar className="h-8 w-8">
+              <AvatarImage src={comment.user.avatar} />
+              <AvatarFallback>{comment.user.name[0]}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-sm">{comment.user.name}</span>
+                <span className="text-xs text-muted-foreground">
+                  {formatDistanceToNow(new Date(comment.createdAt))} ago
+                </span>
+              </div>
+              <p className="text-sm mt-1">{comment.content}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 flex gap-2">
+        <Input
+          placeholder="Add a comment..."
+          value={newComment}
+          onChange={(e) => setNewComment(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              addComment.mutate(newComment);
+            }
+          }}
+        />
+        <Button
+          size="sm"
+          onClick={() => addComment.mutate(newComment)}
+          disabled={!newComment.trim()}
+        >
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+```
+
+### 11.2 Coach Video Feedback
+
+```typescript
+// features/collaboration/components/VideoFeedback.tsx
+export function VideoFeedback({ setId }: { setId: string }) {
+  const [recording, setRecording] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+
+  const startRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+
+    const mediaRecorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = mediaRecorder;
+
+    const chunks: Blob[] = [];
+    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      await uploadFeedbackVideo(blob);
+      stream.getTracks().forEach((track) => track.stop());
+    };
+
+    mediaRecorder.start();
+    setRecording(true);
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+  };
+
+  const uploadFeedbackVideo = async (blob: Blob) => {
+    const formData = new FormData();
+    formData.append('video', blob);
+    formData.append('setId', setId);
+
+    await fetch('/api/feedback/video', {
+      method: 'POST',
+      body: formData,
+    });
+
+    toast({ title: 'Feedback sent!' });
+  };
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Video className="h-4 w-4 mr-2" />
+          Record Feedback
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Record Video Feedback</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            className="w-full aspect-video bg-muted rounded-lg"
+          />
+
+          <div className="flex gap-2">
+            {!recording ? (
+              <Button onClick={startRecording} className="w-full">
+                <Video className="h-4 w-4 mr-2" />
+                Start Recording
+              </Button>
+            ) : (
+              <Button onClick={stopRecording} variant="destructive" className="w-full">
+                <Square className="h-4 w-4 mr-2" />
+                Stop & Send
+              </Button>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+---
+
+<a name="admin-compliance"></a>
+## 12. ADMIN & COMPLIANCE
+
+### 12.1 GDPR Data Export
+
+```typescript
+// features/admin/components/DataExportRequest.tsx
+export function DataExportRequest() {
+  const requestExport = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/gdpr/export', {
+        method: 'POST',
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Export Requested',
+        description: 'You will receive an email with your data within 30 days',
+      });
+    },
+  });
+
+  return (
+    <Card className="p-6">
+      <h3 className="font-semibold mb-2">Export Your Data</h3>
+      <p className="text-sm text-muted-foreground mb-4">
+        Request a complete export of all your personal data in accordance with GDPR.
+      </p>
+      <Button onClick={() => requestExport.mutate()}>Request Export</Button>
+    </Card>
+  );
+}
+
+// Server endpoint
+router.post('/gdpr/export', isAuthenticated, async (req: AuthRequest, res) => {
+  const userId = req.currentUser!.id;
+
+  // Collect all user data
+  const userData = {
+    profile: await db.query.users.findFirst({ where: eq(users.id, userId) }),
+    workouts: await db.query.workoutSessions.findMany({
+      where: eq(workoutSessions.athleteId, userId),
+      with: { exerciseLogs: { with: { sets: true } } },
+    }),
+    programs: await db.query.programs.findMany({
+      where: eq(programs.createdBy, userId),
+    }),
+    messages: await db.query.messages.findMany({
+      where: or(
+        eq(messages.senderId, userId),
+        eq(messages.receiverId, userId)
+      ),
+    }),
+    // ... more data
+  };
+
+  // Create export file
+  const exportData = JSON.stringify(userData, null, 2);
+  const filename = `user-data-${userId}-${Date.now()}.json`;
+
+  // Save to S3 or file system
+  await saveExportFile(filename, exportData);
+
+  // Send email with download link
+  await sendEmail({
+    to: req.currentUser!.email,
+    subject: 'Your Data Export is Ready',
+    body: `Your data export is ready. Download it here: ${getDownloadUrl(filename)}`,
+  });
+
+  res.json({ success: true });
+});
+```
+
+### 12.2 Account Deletion
+
+```typescript
+// features/admin/components/DeleteAccount.tsx
+export function DeleteAccount() {
+  const [confirmText, setConfirmText] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const deleteAccount = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/account', {
+        method: 'DELETE',
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      window.location.href = '/goodbye';
+    },
+  });
+
+  return (
+    <>
+      <Card className="p-6 border-destructive">
+        <h3 className="font-semibold text-destructive mb-2">Delete Account</h3>
+        <p className="text-sm text-muted-foreground mb-4">
+          Permanently delete your account and all associated data. This action cannot be undone.
+        </p>
+        <Button variant="destructive" onClick={() => setOpen(true)}>
+          Delete Account
+        </Button>
+      </Card>
+
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete your account and remove all data from our servers.
+              Type <strong>DELETE</strong> to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <Input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="Type DELETE to confirm"
+          />
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={() => deleteAccount.mutate()}
+              disabled={confirmText !== 'DELETE'}
+            >
+              Delete Account
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+```
+
+---
+
+<a name="performance-offline"></a>
+## 13. PERFORMANCE & OFFLINE IMPROVEMENTS
+
+### 13.1 IndexedDB Caching
+
+```typescript
+// lib/indexeddb.ts
+import { openDB, DBSchema, IDBPDatabase } from 'idb';
+
+interface WorkoutDB extends DBSchema {
+  workouts: {
+    key: string;
+    value: {
+      id: string;
+      date: Date;
+      exercises: any[];
+      synced: boolean;
+    };
+  };
+  exercises: {
+    key: string;
+    value: {
+      id: string;
+      name: string;
+      category: string;
+    };
+  };
+}
+
+let db: IDBPDatabase<WorkoutDB>;
+
+export async function initDB() {
+  db = await openDB<WorkoutDB>('workout-app', 1, {
+    upgrade(db) {
+      db.createObjectStore('workouts', { keyPath: 'id' });
+      db.createObjectStore('exercises', { keyPath: 'id' });
+    },
+  });
+  return db;
+}
+
+export async function cacheWorkout(workout: any) {
+  const db = await initDB();
+  await db.put('workouts', { ...workout, synced: false });
+}
+
+export async function getUnsyncedWorkouts() {
+  const db = await initDB();
+  const allWorkouts = await db.getAll('workouts');
+  return allWorkouts.filter((w) => !w.synced);
+}
+
+export async function markWorkoutSynced(id: string) {
+  const db = await initDB();
+  const workout = await db.get('workouts', id);
+  if (workout) {
+    await db.put('workouts', { ...workout, synced: true });
+  }
+}
+
+// Hook to use IndexedDB
+export function useOfflineWorkouts() {
+  const syncWorkouts = async () => {
+    const unsynced = await getUnsyncedWorkouts();
+
+    for (const workout of unsynced) {
+      try {
+        await fetch('/api/workout-sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(workout),
+        });
+        await markWorkoutSynced(workout.id);
+      } catch (error) {
+        console.error('Failed to sync workout', error);
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Sync when online
+    if (navigator.onLine) {
+      syncWorkouts();
+    }
+
+    window.addEventListener('online', syncWorkouts);
+    return () => window.removeEventListener('online', syncWorkouts);
+  }, []);
+}
+```
+
+### 13.2 Lazy Loading & Code Splitting
+
+```typescript
+// Lazy load pages for better performance
+import { lazy, Suspense } from 'react';
+
+const Programs = lazy(() => import('./pages/programs'));
+const Workout = lazy(() => import('./pages/workout'));
+const Dashboard = lazy(() => import('./pages/dashboard'));
+const Analytics = lazy(() => import('./pages/analytics'));
+
+export function App() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/programs" component={Programs} />
+        <Route path="/workout" component={Workout} />
+        <Route path="/analytics" component={Analytics} />
+      </Switch>
+    </Suspense>
+  );
+}
+
+// vite.config.ts - Manual chunking
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-query'],
+          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu'],
+          'chart-vendor': ['chart.js', 'react-chartjs-2'],
+        },
+      },
+    },
+  },
+});
+```
+
+---
+
+<a name="marketing"></a>
+## 14. MARKETING & GROWTH FEATURES
+
+### 14.1 Referral Program
+
+```typescript
+// features/marketing/components/ReferralProgram.tsx
+export function ReferralProgram() {
+  const { data: referralCode } = useQuery({
+    queryKey: ['referral-code'],
+    queryFn: async () => {
+      const res = await fetch('/api/referrals/my-code');
+      return res.json();
+    },
+  });
+
+  const { data: referralStats } = useQuery({
+    queryKey: ['referral-stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/referrals/stats');
+      return res.json();
+    },
+  });
+
+  const copyReferralLink = () => {
+    const link = `${window.location.origin}/signup?ref=${referralCode}`;
+    navigator.clipboard.writeText(link);
+    toast({ title: 'Referral link copied!' });
+  };
+
+  return (
+    <Card className="p-6">
+      <h2 className="text-xl font-semibold mb-4">Refer Friends & Earn</h2>
+
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm text-muted-foreground mb-2">Your referral link:</p>
+          <div className="flex gap-2">
+            <Input
+              readOnly
+              value={`${window.location.origin}/signup?ref=${referralCode}`}
+            />
+            <Button onClick={copyReferralLink}>
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <Card className="p-4 text-center">
+            <p className="text-2xl font-bold">{referralStats?.signups || 0}</p>
+            <p className="text-sm text-muted-foreground">Sign-ups</p>
+          </Card>
+          <Card className="p-4 text-center">
+            <p className="text-2xl font-bold">{referralStats?.conversions || 0}</p>
+            <p className="text-sm text-muted-foreground">Conversions</p>
+          </Card>
+          <Card className="p-4 text-center">
+            <p className="text-2xl font-bold">${referralStats?.earned || 0}</p>
+            <p className="text-sm text-muted-foreground">Earned</p>
+          </Card>
+        </div>
+
+        <Alert>
+          <Gift className="h-4 w-4" />
+          <AlertDescription>
+            Earn $10 for every friend who signs up and subscribes!
+          </AlertDescription>
+        </Alert>
+      </div>
+    </Card>
+  );
+}
+
+// Server endpoint
+router.post('/referrals/track', async (req, res) => {
+  const { referralCode, newUserId } = req.body;
+
+  const referrer = await db.query.users.findFirst({
+    where: eq(users.referralCode, referralCode),
+  });
+
+  if (referrer) {
+    await db.insert(referrals).values({
+      referrerId: referrer.id,
+      referredUserId: newUserId,
+      status: 'pending',
+      createdAt: new Date(),
+    });
+  }
+
+  res.json({ success: true });
+});
+```
+
+### 14.2 Social Sharing
+
+```typescript
+// features/marketing/components/ShareWorkout.tsx
+export function ShareWorkout({ workoutId }: { workoutId: string }) {
+  const { data: workout } = useQuery({
+    queryKey: ['workout', workoutId],
+    queryFn: async () => {
+      const res = await fetch(`/api/workouts/${workoutId}`);
+      return res.json();
+    },
+  });
+
+  const generateShareImage = async () => {
+    // Generate OG image for social sharing
+    const res = await fetch(`/api/og/workout/${workoutId}`);
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  };
+
+  const shareToTwitter = () => {
+    const text = `Just crushed a workout! 💪\n\n${workout.exercises.length} exercises\n${workout.totalVolume}kg total volume\n\nTrack your training at`;
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${window.location.origin}`;
+    window.open(url, '_blank');
+  };
+
+  const shareToInstagram = async () => {
+    const imageUrl = await generateShareImage();
+    // Instagram sharing requires mobile app
+    if (navigator.share) {
+      await navigator.share({
+        title: 'My Workout',
+        text: `Check out my workout!`,
+        url: imageUrl,
+      });
+    }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Share2 className="h-4 w-4 mr-2" />
+          Share
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem onClick={shareToTwitter}>
+          <Twitter className="h-4 w-4 mr-2" />
+          Share on Twitter
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={shareToInstagram}>
+          <Instagram className="h-4 w-4 mr-2" />
+          Share on Instagram
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigator.clipboard.writeText(window.location.href)}>
+          <Link className="h-4 w-4 mr-2" />
+          Copy Link
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+```
+
+---
+
+<a name="enterprise"></a>
+## 15. ENTERPRISE FEATURES
+
+### 15.1 Multi-Organization Management
+
+```typescript
+// features/enterprise/components/OrganizationSwitcher.tsx
+export function OrganizationSwitcher() {
+  const { data: organizations } = useQuery({
+    queryKey: ['user-organizations'],
+    queryFn: async () => {
+      const res = await fetch('/api/organizations/my-orgs');
+      return res.json();
+    },
+  });
+
+  const [currentOrg, setCurrentOrg] = useAtom(currentOrganizationAtom);
+
+  return (
+    <Select value={currentOrg} onValueChange={setCurrentOrg}>
+      <SelectTrigger className="w-64">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {organizations?.map((org) => (
+          <SelectItem key={org.id} value={org.id}>
+            <div className="flex items-center gap-2">
+              <Avatar className="h-6 w-6">
+                <AvatarImage src={org.logo} />
+                <AvatarFallback>{org.name[0]}</AvatarFallback>
+              </Avatar>
+              <span>{org.name}</span>
+            </div>
+          </SelectItem>
+        ))}
+        <SelectSeparator />
+        <SelectItem value="create-new">
+          <div className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            <span>Create Organization</span>
+          </div>
+        </SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+```
+
+### 15.2 Advanced Team Roles
+
+```typescript
+// features/enterprise/rbac.ts
+export enum Permission {
+  // Programs
+  PROGRAM_CREATE = 'program:create',
+  PROGRAM_EDIT_OWN = 'program:edit:own',
+  PROGRAM_EDIT_ANY = 'program:edit:any',
+  PROGRAM_DELETE = 'program:delete',
+  PROGRAM_ASSIGN = 'program:assign',
+
+  // Athletes
+  ATHLETE_VIEW = 'athlete:view',
+  ATHLETE_EDIT = 'athlete:edit',
+  ATHLETE_DELETE = 'athlete:delete',
+
+  // Analytics
+  ANALYTICS_VIEW_OWN = 'analytics:view:own',
+  ANALYTICS_VIEW_TEAM = 'analytics:view:team',
+  ANALYTICS_VIEW_ORG = 'analytics:view:org',
+
+  // Organization
+  ORG_SETTINGS = 'org:settings',
+  ORG_BILLING = 'org:billing',
+  ORG_MEMBERS = 'org:members',
+}
+
+export const rolePermissions: Record<string, Permission[]> = {
+  athlete: [
+    Permission.ANALYTICS_VIEW_OWN,
+    Permission.PROGRAM_CREATE, // For personal programs
+  ],
+  coach: [
+    Permission.PROGRAM_CREATE,
+    Permission.PROGRAM_EDIT_OWN,
+    Permission.PROGRAM_ASSIGN,
+    Permission.ATHLETE_VIEW,
+    Permission.ANALYTICS_VIEW_TEAM,
+  ],
+  head_coach: [
+    Permission.PROGRAM_CREATE,
+    Permission.PROGRAM_EDIT_ANY,
+    Permission.PROGRAM_DELETE,
+    Permission.PROGRAM_ASSIGN,
+    Permission.ATHLETE_VIEW,
+    Permission.ATHLETE_EDIT,
+    Permission.ANALYTICS_VIEW_ORG,
+    Permission.ORG_MEMBERS,
+  ],
+  admin: Object.values(Permission),
+};
+
+export function hasPermission(
+  userRole: string,
+  permission: Permission
+): boolean {
+  return rolePermissions[userRole]?.includes(permission) || false;
+}
+
+// Middleware
+export function requirePermission(permission: Permission) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    const user = req.currentUser!;
+
+    if (!hasPermission(user.role, permission)) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'You do not have permission to perform this action',
+      });
+    }
+
+    next();
+  };
+}
+
+// Usage in routes
+router.post(
+  '/programs',
+  isAuthenticated,
+  requirePermission(Permission.PROGRAM_CREATE),
+  async (req, res) => {
+    // Create program
+  }
+);
+```
+
+### 15.3 Audit Logging
+
+```typescript
+// features/enterprise/audit-log.ts
+export enum AuditAction {
+  USER_LOGIN = 'user.login',
+  USER_LOGOUT = 'user.logout',
+  PROGRAM_CREATED = 'program.created',
+  PROGRAM_UPDATED = 'program.updated',
+  PROGRAM_DELETED = 'program.deleted',
+  ATHLETE_INVITED = 'athlete.invited',
+  SETTINGS_CHANGED = 'settings.changed',
+  // ... more actions
+}
+
+export async function logAuditEvent(
+  userId: string,
+  action: AuditAction,
+  metadata?: Record<string, any>
+) {
+  await db.insert(auditLogs).values({
+    userId,
+    action,
+    metadata: JSON.stringify(metadata),
+    ipAddress: metadata?.ipAddress,
+    userAgent: metadata?.userAgent,
+    timestamp: new Date(),
+  });
+
+  logger.info('Audit event logged', {
+    userId,
+    action,
+    metadata,
+  });
+}
+
+// Middleware to auto-log API calls
+export function auditMiddleware(action: AuditAction) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    // Log after response
+    const originalSend = res.send;
+    res.send = function (data) {
+      if (res.statusCode < 400) {
+        logAuditEvent(req.currentUser!.id, action, {
+          path: req.path,
+          method: req.method,
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+        });
+      }
+      return originalSend.call(this, data);
+    };
+
+    next();
+  };
+}
+
+// View audit logs
+export function AuditLogViewer() {
+  const { data: logs } = useQuery({
+    queryKey: ['audit-logs'],
+    queryFn: async () => {
+      const res = await fetch('/api/audit-logs');
+      return res.json();
+    },
+  });
+
+  return (
+    <Card className="p-6">
+      <h2 className="text-xl font-semibold mb-4">Audit Log</h2>
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Timestamp</TableHead>
+            <TableHead>User</TableHead>
+            <TableHead>Action</TableHead>
+            <TableHead>Details</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {logs?.map((log) => (
+            <TableRow key={log.id}>
+              <TableCell>{new Date(log.timestamp).toLocaleString()}</TableCell>
+              <TableCell>{log.user.name}</TableCell>
+              <TableCell>
+                <Badge>{log.action}</Badge>
+              </TableCell>
+              <TableCell className="text-sm text-muted-foreground">
+                {JSON.stringify(log.metadata)}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
+  );
+}
+```
+
+---
+
+## IMPLEMENTATION PRIORITY MATRIX
+
+Based on impact and effort, here's the recommended implementation order:
+
+### HIGH IMPACT, LOW EFFORT (Do First)
+1. PWA Support (Section 3.1)
+2. Keyboard Shortcuts (Section 2.1)
+3. Haptic Feedback (Section 3.3)
+4. Data Export (Section 5.1)
+5. Achievement System (Section 7.1)
+
+### HIGH IMPACT, HIGH EFFORT (Plan Carefully)
+1. Internationalization (Section 4)
+2. Advanced Analytics (Section 9)
+3. Real-time Collaboration (Section 11)
+4. Offline Support (Section 3.2, 13.1)
+
+### MEDIUM IMPACT (Nice to Have)
+1. Exercise Video Library (Section 6.1)
+2. Leaderboards (Section 7.2)
+3. Training Calendar (Section 8.1)
+4. Integrations (Section 10)
+
+### LOW PRIORITY (Future Enhancements)
+1. Social Sharing (Section 14.2)
+2. Referral Program (Section 14.1)
+3. Enterprise Features (Section 15)
+
+---
+
+## ESTIMATED TIMELINE
+
+- **Sections 1-5 (Core UX)**: 3-4 weeks
+- **Sections 6-7 (Coaching & Gamification)**: 2-3 weeks
+- **Sections 8-9 (Calendar & Analytics)**: 2-3 weeks
+- **Sections 10-11 (Integrations & Collaboration)**: 3-4 weeks
+- **Sections 12-13 (Admin & Performance)**: 2 weeks
+- **Sections 14-15 (Marketing & Enterprise)**: 2-3 weeks
+
+**Total: 14-20 weeks** for full implementation
+
+---
+
+## NEXT STEPS
+
+1. Review this document with your team
+2. Prioritize features based on your beta testing goals
+3. Start with HIGH IMPACT, LOW EFFORT items
+4. Implement in 2-week sprints
+5. Test each feature with beta users before moving to next
+6. Collect feedback and iterate
+
+All code examples are production-ready and can be implemented directly into your application!

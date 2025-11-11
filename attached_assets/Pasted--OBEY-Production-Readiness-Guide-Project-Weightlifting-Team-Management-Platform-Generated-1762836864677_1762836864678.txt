@@ -1,0 +1,3255 @@
+# OBEY - Production Readiness Guide
+
+**Project:** Weightlifting Team Management Platform
+**Generated:** 2025-11-10
+**Current Status:** 60% Production Ready
+**Estimated Time to Production:** 15-20 hours
+
+---
+
+## Table of Contents
+
+1. [Critical Bugs - Fix Immediately](#critical-bugs)
+2. [Code Quality Improvements](#code-quality)
+3. [Production Infrastructure](#production-infrastructure)
+4. [Security Enhancements](#security-enhancements)
+5. [Performance Optimizations](#performance-optimizations)
+6. [Testing Strategy](#testing-strategy)
+7. [Monitoring & Observability](#monitoring)
+8. [User Experience Improvements](#ux-improvements)
+9. [Beta Testing Preparation](#beta-preparation)
+10. [Production Deployment Checklist](#deployment-checklist)
+
+---
+
+<a name="critical-bugs"></a>
+## 1. CRITICAL BUGS - Fix Immediately (3-4 hours)
+
+### Bug #1: Missing `/api/program-assignments/active` Endpoint
+
+**Problem:** Client expects this endpoint but server doesn't have it. Workout page crashes.
+
+**Location:** `server/routes.ts`
+
+**Add this endpoint after line 1210 (near other program-assignments routes):**
+
+```typescript
+// GET active program assignment for current user
+app.get('/api/program-assignments/active', isAuthenticated, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.currentUser!.id;
+
+    // Get the most recent active assignment for this user
+    const assignment = await db.query.programAssignments.findFirst({
+      where: (assignments, { eq, and }) => and(
+        eq(assignments.athleteId, userId),
+        // Could add status check here if you add a status field
+      ),
+      with: {
+        program: {
+          with: {
+            weeks: {
+              with: {
+                days: {
+                  with: {
+                    exercises: true
+                  }
+                }
+              },
+              orderBy: (weeks, { asc }) => [asc(weeks.weekNumber)]
+            }
+          }
+        }
+      },
+      orderBy: (assignments, { desc }) => [desc(assignments.startDate)]
+    });
+
+    if (!assignment) {
+      return res.status(404).json({
+        message: "No active program assignment found"
+      });
+    }
+
+    res.json(assignment);
+  } catch (error: any) {
+    logger.error("getting active program assignment", error);
+    res.status(500).json({
+      message: "Failed to get active program assignment"
+    });
+  }
+});
+```
+
+---
+
+### Bug #2: Missing `/api/workout-sessions/today` Endpoint
+
+**Problem:** Client needs to load today's workout but endpoint doesn't exist.
+
+**Location:** `server/routes.ts`
+
+**Add this endpoint after line 1738 (near other workout-sessions routes):**
+
+```typescript
+// GET today's workout session for current user
+app.get('/api/workout-sessions/today', isAuthenticated, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.currentUser!.id;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of day
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1); // Start of next day
+
+    // Find workout session for today
+    const session = await db.query.workoutSessions.findFirst({
+      where: (sessions, { eq, and, gte, lt }) => and(
+        eq(sessions.athleteId, userId),
+        gte(sessions.date, today),
+        lt(sessions.date, tomorrow)
+      ),
+      with: {
+        programDay: {
+          with: {
+            exercises: {
+              with: {
+                exercise: true
+              },
+              orderBy: (exercises, { asc }) => [asc(exercises.order)]
+            }
+          }
+        },
+        exerciseLogs: {
+          with: {
+            sets: {
+              orderBy: (sets, { asc }) => [asc(sets.setNumber)]
+            },
+            programExercise: {
+              with: {
+                exercise: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!session) {
+      // Check if there's a scheduled workout for today from active program
+      const assignment = await db.query.programAssignments.findFirst({
+        where: (assignments, { eq }) => eq(assignments.athleteId, userId),
+        with: {
+          program: {
+            with: {
+              weeks: {
+                with: {
+                  days: {
+                    with: {
+                      exercises: {
+                        with: {
+                          exercise: true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        orderBy: (assignments, { desc }) => [desc(assignments.startDate)]
+      });
+
+      if (!assignment) {
+        return res.status(404).json({
+          message: "No workout scheduled for today"
+        });
+      }
+
+      // Calculate which day of the program we're on
+      const startDate = new Date(assignment.startDate);
+      const daysSinceStart = Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Find the appropriate program day
+      // This is simplified - you may need more complex logic for week/day calculation
+      let dayCount = 0;
+      let todaysProgramDay = null;
+
+      for (const week of assignment.program.weeks) {
+        for (const day of week.days) {
+          if (dayCount === daysSinceStart % assignment.program.durationWeeks * 7) {
+            todaysProgramDay = day;
+            break;
+          }
+          dayCount++;
+        }
+        if (todaysProgramDay) break;
+      }
+
+      return res.json({
+        scheduled: true,
+        programDay: todaysProgramDay,
+        assignment: assignment,
+        message: "Workout scheduled but not started"
+      });
+    }
+
+    res.json(session);
+  } catch (error: any) {
+    logger.error("getting today's workout session", error);
+    res.status(500).json({
+      message: "Failed to get today's workout"
+    });
+  }
+});
+```
+
+---
+
+### Bug #3: Route Path Mismatch - `/api/program-days` vs `/api/days`
+
+**Problem:** Client calls `/api/program-days/{dayId}/exercises` but server has `/api/days/{dayId}/exercises`
+
+**Location:** `server/routes.ts` around line 885
+
+**Option 1: Fix Server (Recommended - Better REST naming)**
+
+```typescript
+// REPLACE this line (around line 885):
+app.post('/api/days/:dayId/exercises', isAuthenticated, verifyProgramAccess, async (req: AuthRequest, res) => {
+
+// WITH:
+app.post('/api/program-days/:dayId/exercises', isAuthenticated, verifyProgramAccess, async (req: AuthRequest, res) => {
+```
+
+**Also fix the GET endpoint if it exists:**
+
+```typescript
+// REPLACE:
+app.get('/api/days/:dayId/exercises', isAuthenticated, async (req: AuthRequest, res) => {
+
+// WITH:
+app.get('/api/program-days/:dayId/exercises', isAuthenticated, async (req: AuthRequest, res) => {
+```
+
+**Option 2: Fix Client (If you prefer shorter URLs)**
+
+Search for all occurrences of `/api/program-days/` in the client code and replace with `/api/days/`.
+
+---
+
+### Bug #4: Remove Debug Console.logs
+
+**Problem:** Production code has debug console.log statements exposing internal flow.
+
+**Location:** `server/routes.ts`
+
+**Lines 161 & 168 - REMOVE these:**
+
+```typescript
+// BEFORE (lines 158-174):
+app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.currentUser!.id;
+    console.log("Creating organization for user:", userId, "with body:", req.body); // ❌ REMOVE
+    const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
+    const org = await storage.createOrganization(data);
+
+    // Update user role to admin (organization owner)
+    await storage.updateUserRole(userId, 'admin');
+
+    console.log("Organization created successfully:", org.id); // ❌ REMOVE
+    res.json(org);
+  } catch (error: any) {
+    logger.error("creating organization", error);
+    res.status(400).json({ message: "Failed to create organization" });
+  }
+});
+
+// AFTER:
+app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.currentUser!.id;
+    logger.info("Creating organization", { userId }); // ✅ Use logger instead
+    const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
+    const org = await storage.createOrganization(data);
+
+    // Update user role to admin (organization owner)
+    await storage.updateUserRole(userId, 'admin');
+
+    logger.info("Organization created", { organizationId: org.id }); // ✅ Use logger
+    res.json(org);
+  } catch (error: any) {
+    logger.error("creating organization", error);
+    res.status(400).json({ message: "Failed to create organization" });
+  }
+});
+```
+
+---
+
+### Bug #5: Remove Duplicate Message Routes
+
+**Problem:** Multiple duplicate routes for messaging causing confusion.
+
+**Location:** `server/routes.ts`
+
+**Lines 1762-1800 - REMOVE this entire section (old/duplicate code):**
+
+```typescript
+// ❌ DELETE THIS ENTIRE BLOCK (around lines 1762-1800):
+/*
+app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
+  // ... duplicate implementation
+});
+
+app.get('/api/messages/conversation/:otherUserId', isAuthenticated, async (req: AuthRequest, res) => {
+  // ... duplicate implementation
+});
+
+app.patch('/api/messages/:id/read', isAuthenticated, async (req: AuthRequest, res) => {
+  // ... duplicate implementation
+});
+*/
+```
+
+**Keep ONLY the implementations around lines 2215-2280 which have better security.**
+
+**Standardize the "mark as read" endpoint to use PATCH (not PUT):**
+
+```typescript
+// Around line 2273, ensure it's PATCH (not PUT):
+app.patch('/api/messages/:id/read', isAuthenticated, async (req: AuthRequest, res) => {
+  try {
+    const messageId = parseInt(req.params.id);
+    const userId = req.currentUser!.id;
+
+    // Get message first to verify recipient
+    const message = await db.query.messages.findFirst({
+      where: (messages, { eq }) => eq(messages.id, messageId)
+    });
+
+    if (!message) {
+      return res.status(404).json({ message: "Message not found" });
+    }
+
+    // Verify current user is the recipient
+    if (message.recipientId !== userId) {
+      return res.status(403).json({
+        message: "You can only mark your own messages as read"
+      });
+    }
+
+    await db.update(messages)
+      .set({ isRead: true, readAt: new Date() })
+      .where(eq(messages.id, messageId));
+
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error("marking message as read", error);
+    res.status(500).json({ message: "Failed to mark message as read" });
+  }
+});
+```
+
+---
+
+<a name="code-quality"></a>
+## 2. CODE QUALITY IMPROVEMENTS (2-3 hours)
+
+### Improvement #1: Implement Update Day Name Feature
+
+**Problem:** Day name editing shows "coming soon" toast instead of working.
+
+**Location:** `client/src/pages/programs.tsx` line 527
+
+**Add the API endpoint in `server/routes.ts`:**
+
+```typescript
+// PATCH program day name
+app.patch('/api/program-days/:dayId', isAuthenticated, async (req: AuthRequest, res) => {
+  try {
+    const dayId = parseInt(req.params.dayId);
+    const { name } = req.body;
+
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ message: "Day name is required" });
+    }
+
+    // Get the day to verify access through program
+    const day = await db.query.programDays.findFirst({
+      where: (days, { eq }) => eq(days.id, dayId),
+      with: {
+        week: {
+          with: {
+            program: true
+          }
+        }
+      }
+    });
+
+    if (!day) {
+      return res.status(404).json({ message: "Program day not found" });
+    }
+
+    // Verify user has access to this program
+    const userId = req.currentUser!.id;
+    const program = day.week.program;
+
+    if (program.createdBy !== userId) {
+      // Check if user has access through organization
+      const org = await db.query.organizations.findFirst({
+        where: (orgs, { eq }) => eq(orgs.id, program.organizationId),
+        with: {
+          members: true
+        }
+      });
+
+      const hasAccess = org?.members.some(m => m.userId === userId);
+      if (!hasAccess && org?.ownerId !== userId) {
+        return res.status(403).json({
+          message: "You don't have permission to edit this program"
+        });
+      }
+    }
+
+    // Update the day name
+    await db.update(programDays)
+      .set({ name, updatedAt: new Date() })
+      .where(eq(programDays.id, dayId));
+
+    const updatedDay = await db.query.programDays.findFirst({
+      where: (days, { eq }) => eq(days.id, dayId)
+    });
+
+    res.json(updatedDay);
+  } catch (error: any) {
+    logger.error("updating program day", error);
+    res.status(500).json({ message: "Failed to update program day" });
+  }
+});
+```
+
+**Update the client code in `client/src/pages/programs.tsx`:**
+
+```typescript
+// Add this mutation near other mutations (around line 50-100):
+const updateDayMutation = useMutation({
+  mutationFn: async ({ dayId, name }: { dayId: number; name: string }) => {
+    const res = await fetch(`/api/program-days/${dayId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+      credentials: 'include',
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/programs'] });
+    toast({ title: "Day name updated successfully" });
+  },
+  onError: (error: Error) => {
+    toast({
+      title: "Failed to update day name",
+      description: error.message,
+      variant: "destructive",
+    });
+  },
+});
+
+// Update the button handler (around line 524-530):
+<Button
+  size="sm"
+  onClick={() => {
+    updateDayMutation.mutate({
+      dayId: day.id,
+      name: editingDayName
+    });
+    setEditingDayId(null);
+  }}
+  disabled={updateDayMutation.isPending}
+  data-testid={`button-save-day-${day.id}`}
+>
+  {updateDayMutation.isPending ? "Saving..." : "Save"}
+</Button>
+```
+
+---
+
+### Improvement #2: Clean Up Unused Files
+
+**Delete the entire `attached_assets` folder (4.4MB of old code):**
+
+```bash
+rm -rf /Users/mymac/Downloads/WF2/attached_assets
+```
+
+**Or if you want to archive it:**
+
+```bash
+mkdir -p /Users/mymac/Downloads/WF2_archive
+mv /Users/mymac/Downloads/WF2/attached_assets /Users/mymac/Downloads/WF2_archive/
+```
+
+**Consider removing if not needed:**
+
+```bash
+# If you're not using seed functionality:
+rm /Users/mymac/Downloads/WF2/server/seedAllExercises.ts
+
+# If you're not using aspect-ratio component:
+rm /Users/mymac/Downloads/WF2/client/src/components/ui/aspect-ratio.tsx
+```
+
+---
+
+<a name="production-infrastructure"></a>
+## 3. PRODUCTION INFRASTRUCTURE (4-6 hours)
+
+### Infrastructure #1: Health Check Endpoint
+
+**Location:** Create new file `server/health.ts`
+
+```typescript
+import type { Express } from 'express';
+import { db } from './db';
+import { logger } from './logger';
+
+export interface HealthStatus {
+  status: 'healthy' | 'degraded' | 'unhealthy';
+  timestamp: string;
+  version: string;
+  uptime: number;
+  checks: {
+    database: 'ok' | 'error';
+    memory: 'ok' | 'warning' | 'critical';
+    disk?: 'ok' | 'warning' | 'critical';
+  };
+  details?: Record<string, any>;
+}
+
+export function setupHealthChecks(app: Express) {
+  // Basic health check (fast)
+  app.get('/api/health', (req, res) => {
+    res.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: process.env.APP_VERSION || '1.0.0',
+    });
+  });
+
+  // Detailed health check (includes DB check)
+  app.get('/api/health/detailed', async (req, res) => {
+    const startTime = Date.now();
+    const health: HealthStatus = {
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      version: process.env.APP_VERSION || '1.0.0',
+      uptime: process.uptime(),
+      checks: {
+        database: 'ok',
+        memory: 'ok',
+      },
+      details: {},
+    };
+
+    // Check database
+    try {
+      await db.execute('SELECT 1');
+      health.checks.database = 'ok';
+    } catch (error) {
+      logger.error('Health check: Database check failed', error);
+      health.checks.database = 'error';
+      health.status = 'unhealthy';
+      health.details!.databaseError = error instanceof Error ? error.message : 'Unknown error';
+    }
+
+    // Check memory usage
+    const memUsage = process.memoryUsage();
+    const memoryUsagePercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
+
+    if (memoryUsagePercent > 90) {
+      health.checks.memory = 'critical';
+      health.status = 'unhealthy';
+    } else if (memoryUsagePercent > 75) {
+      health.checks.memory = 'warning';
+      if (health.status === 'healthy') health.status = 'degraded';
+    }
+
+    health.details!.memory = {
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + ' MB',
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + ' MB',
+      usagePercent: Math.round(memoryUsagePercent) + '%',
+    };
+
+    health.details!.responseTime = (Date.now() - startTime) + 'ms';
+
+    const statusCode = health.status === 'healthy' ? 200 :
+                       health.status === 'degraded' ? 200 : 503;
+
+    res.status(statusCode).json(health);
+  });
+
+  // Liveness probe (for Kubernetes/Docker)
+  app.get('/api/health/live', (req, res) => {
+    res.status(200).send('OK');
+  });
+
+  // Readiness probe (for Kubernetes/Docker)
+  app.get('/api/health/ready', async (req, res) => {
+    try {
+      await db.execute('SELECT 1');
+      res.status(200).send('OK');
+    } catch (error) {
+      res.status(503).send('Service Unavailable');
+    }
+  });
+}
+```
+
+**Add to `server/index.ts`:**
+
+```typescript
+import { setupHealthChecks } from './health';
+
+// ... after other middleware setup, before routes
+setupHealthChecks(app);
+```
+
+---
+
+### Infrastructure #2: Request ID Middleware
+
+**Location:** Create `server/middleware/requestId.ts`
+
+```typescript
+import type { Request, Response, NextFunction } from 'express';
+import { nanoid } from 'nanoid';
+
+declare global {
+  namespace Express {
+    interface Request {
+      requestId?: string;
+    }
+  }
+}
+
+export function requestIdMiddleware(req: Request, res: Response, next: NextFunction) {
+  // Use existing request ID from header or generate new one
+  const requestId = (req.headers['x-request-id'] as string) || nanoid();
+  req.requestId = requestId;
+  res.setHeader('X-Request-ID', requestId);
+  next();
+}
+```
+
+**Update `server/logger.ts` to include request ID:**
+
+```typescript
+// Add to the log method:
+log(level: LogLevel, message: string, context?: LogContext): void {
+  if (!this.shouldLog(level)) return;
+
+  const timestamp = new Date().toISOString();
+  const logEntry: Record<string, any> = {
+    timestamp,
+    level,
+    message,
+    requestId: context?.requestId, // Add this
+    ...this.sanitizeContext(context),
+  };
+
+  // ... rest of log method
+}
+```
+
+**Add to `server/index.ts`:**
+
+```typescript
+import { requestIdMiddleware } from './middleware/requestId';
+
+// Add after helmet, before other middleware:
+app.use(requestIdMiddleware);
+```
+
+---
+
+### Infrastructure #3: Graceful Shutdown
+
+**Location:** `server/index.ts` at the end of file
+
+```typescript
+// Add at the end of server/index.ts:
+
+let isShuttingDown = false;
+
+// Graceful shutdown handler
+async function gracefulShutdown(signal: string) {
+  if (isShuttingDown) {
+    logger.warn(`${signal} received again, forcing exit`);
+    process.exit(1);
+  }
+
+  isShuttingDown = true;
+  logger.info(`${signal} received, starting graceful shutdown`);
+
+  // Stop accepting new connections
+  server.close(async (err) => {
+    if (err) {
+      logger.error('Error during server shutdown', err);
+      process.exit(1);
+    }
+
+    logger.info('HTTP server closed');
+
+    try {
+      // Close database connections
+      await pool.end();
+      logger.info('Database connections closed');
+
+      logger.info('Graceful shutdown completed');
+      process.exit(0);
+    } catch (error) {
+      logger.error('Error closing database connections', error);
+      process.exit(1);
+    }
+  });
+
+  // Force shutdown after 30 seconds
+  setTimeout(() => {
+    logger.error('Forced shutdown after timeout');
+    process.exit(1);
+  }, 30000);
+}
+
+// Handle shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception', error);
+  gracefulShutdown('UNCAUGHT_EXCEPTION');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled rejection', { reason, promise });
+  gracefulShutdown('UNHANDLED_REJECTION');
+});
+```
+
+---
+
+### Infrastructure #4: Environment Variable Validation
+
+**Location:** Create `server/config.ts`
+
+```typescript
+import { z } from 'zod';
+
+const envSchema = z.object({
+  // Database
+  DATABASE_URL: z.string().url().min(1, 'DATABASE_URL is required'),
+
+  // Server
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  PORT: z.string().regex(/^\d+$/).transform(Number).default('5000'),
+
+  // Session & Security
+  SESSION_SECRET: z.string().min(32, 'SESSION_SECRET must be at least 32 characters'),
+  CSRF_SECRET: z.string().min(32).optional(),
+
+  // Logging
+  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+
+  // Application
+  APP_VERSION: z.string().optional().default('1.0.0'),
+  APP_URL: z.string().url().optional(),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+let config: Env;
+
+export function validateEnv(): Env {
+  try {
+    config = envSchema.parse(process.env);
+    return config;
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      console.error('❌ Environment variable validation failed:');
+      error.errors.forEach((err) => {
+        console.error(`  - ${err.path.join('.')}: ${err.message}`);
+      });
+      process.exit(1);
+    }
+    throw error;
+  }
+}
+
+export function getConfig(): Env {
+  if (!config) {
+    throw new Error('Config not initialized. Call validateEnv() first.');
+  }
+  return config;
+}
+```
+
+**Add to top of `server/index.ts`:**
+
+```typescript
+import { validateEnv } from './config';
+
+// Validate environment variables at startup
+const config = validateEnv();
+console.log('✅ Environment variables validated');
+```
+
+---
+
+<a name="security-enhancements"></a>
+## 4. SECURITY ENHANCEMENTS (3-4 hours)
+
+### Security #1: Enhanced Rate Limiting
+
+**Location:** Update `server/middleware/rateLimit.ts`
+
+```typescript
+import type { Request, Response, NextFunction } from 'express';
+import { logger } from '../logger';
+
+interface RateLimitConfig {
+  windowMs: number;      // Time window in milliseconds
+  maxRequests: number;   // Max requests per window
+  message?: string;
+  skipSuccessfulRequests?: boolean;
+  keyGenerator?: (req: Request) => string;
+}
+
+interface RateLimitEntry {
+  count: number;
+  resetTime: number;
+  blockedUntil?: number;
+}
+
+const store = new Map<string, RateLimitEntry>();
+
+// Clean up old entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of store.entries()) {
+    if (entry.resetTime < now && (!entry.blockedUntil || entry.blockedUntil < now)) {
+      store.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
+
+export function rateLimit(config: RateLimitConfig) {
+  const {
+    windowMs,
+    maxRequests,
+    message = 'Too many requests, please try again later',
+    skipSuccessfulRequests = false,
+    keyGenerator = (req) => {
+      // Use user ID if authenticated, otherwise IP
+      const userId = (req as any).currentUser?.id;
+      return userId ? `user:${userId}` : `ip:${req.ip || req.socket.remoteAddress}`;
+    },
+  } = config;
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    const key = keyGenerator(req);
+    const now = Date.now();
+
+    let entry = store.get(key);
+
+    // If entry doesn't exist or window has expired, create new entry
+    if (!entry || entry.resetTime < now) {
+      entry = {
+        count: 0,
+        resetTime: now + windowMs,
+      };
+      store.set(key, entry);
+    }
+
+    // Check if currently blocked
+    if (entry.blockedUntil && entry.blockedUntil > now) {
+      const retryAfter = Math.ceil((entry.blockedUntil - now) / 1000);
+      res.setHeader('Retry-After', retryAfter.toString());
+      res.setHeader('X-RateLimit-Limit', maxRequests.toString());
+      res.setHeader('X-RateLimit-Remaining', '0');
+      res.setHeader('X-RateLimit-Reset', new Date(entry.blockedUntil).toISOString());
+
+      logger.warn('Rate limit exceeded', {
+        key,
+        path: req.path,
+        blockedUntil: new Date(entry.blockedUntil).toISOString()
+      });
+
+      return res.status(429).json({
+        message,
+        retryAfter
+      });
+    }
+
+    // Increment counter
+    entry.count++;
+
+    // Set rate limit headers
+    const remaining = Math.max(0, maxRequests - entry.count);
+    res.setHeader('X-RateLimit-Limit', maxRequests.toString());
+    res.setHeader('X-RateLimit-Remaining', remaining.toString());
+    res.setHeader('X-RateLimit-Reset', new Date(entry.resetTime).toISOString());
+
+    // Check if limit exceeded
+    if (entry.count > maxRequests) {
+      // Block for 15 minutes on repeated violations
+      entry.blockedUntil = now + (15 * 60 * 1000);
+
+      logger.warn('Rate limit exceeded', {
+        key,
+        path: req.path,
+        count: entry.count,
+        maxRequests
+      });
+
+      const retryAfter = 900; // 15 minutes in seconds
+      res.setHeader('Retry-After', retryAfter.toString());
+      return res.status(429).json({
+        message,
+        retryAfter
+      });
+    }
+
+    // If configured to skip successful requests, decrement on success
+    if (skipSuccessfulRequests) {
+      const originalSend = res.json.bind(res);
+      res.json = function(body: any) {
+        if (res.statusCode < 400) {
+          entry.count = Math.max(0, entry.count - 1);
+        }
+        return originalSend(body);
+      };
+    }
+
+    next();
+  };
+}
+
+// Preset rate limiters
+export const strictRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  maxRequests: 5,
+  message: 'Too many attempts, please try again in 15 minutes',
+});
+
+export const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutes
+  maxRequests: 10,
+  message: 'Too many login attempts, please try again later',
+  skipSuccessfulRequests: true,
+});
+
+export const apiRateLimit = rateLimit({
+  windowMs: 1 * 60 * 1000,  // 1 minute
+  maxRequests: 100,
+  message: 'Too many API requests, please slow down',
+});
+
+export const createAccountRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,  // 1 hour
+  maxRequests: 3,
+  message: 'Too many account creation attempts',
+  keyGenerator: (req) => `ip:${req.ip || req.socket.remoteAddress}`,
+});
+```
+
+**Update routes in `server/routes.ts`:**
+
+```typescript
+import { authRateLimit, createAccountRateLimit, apiRateLimit } from './middleware/rateLimit';
+
+// Apply to auth routes:
+app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
+  // ... login logic
+});
+
+app.post('/api/auth/register', createAccountRateLimit, async (req, res) => {
+  // ... register logic
+});
+
+// Apply general rate limit to all API routes:
+app.use('/api', apiRateLimit);
+```
+
+---
+
+### Security #2: Input Sanitization Enhancement
+
+**Location:** Update `server/middleware/sanitization.ts`
+
+```typescript
+import sanitizeHtml from 'sanitize-html';
+import type { Request, Response, NextFunction } from 'express';
+
+const MAX_STRING_LENGTH = 10000;
+const MAX_ARRAY_LENGTH = 1000;
+const MAX_OBJECT_DEPTH = 10;
+
+// Define which fields should allow rich text
+const RICH_TEXT_FIELDS = new Set([
+  'description',
+  'notes',
+  'content',
+  'bio',
+  'message',
+]);
+
+// Define which fields should be stripped of ALL HTML
+const PLAIN_TEXT_FIELDS = new Set([
+  'name',
+  'email',
+  'username',
+  'title',
+  'firstName',
+  'lastName',
+]);
+
+const ALLOWED_TAGS = [
+  'p', 'br', 'strong', 'em', 'u', 's',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li',
+  'blockquote', 'code', 'pre',
+  'a',
+];
+
+const ALLOWED_ATTRIBUTES = {
+  'a': ['href', 'title', 'target'],
+};
+
+function sanitizeValue(
+  value: any,
+  fieldName: string,
+  depth: number = 0
+): any {
+  if (depth > MAX_OBJECT_DEPTH) {
+    throw new Error('Object nesting too deep');
+  }
+
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  // Handle strings
+  if (typeof value === 'string') {
+    // Check length
+    if (value.length > MAX_STRING_LENGTH) {
+      throw new Error(`String too long in field: ${fieldName}`);
+    }
+
+    // Rich text fields
+    if (RICH_TEXT_FIELDS.has(fieldName)) {
+      return sanitizeHtml(value, {
+        allowedTags: ALLOWED_TAGS,
+        allowedAttributes: ALLOWED_ATTRIBUTES,
+        allowedSchemes: ['http', 'https', 'mailto'],
+      });
+    }
+
+    // Plain text fields - strip all HTML
+    if (PLAIN_TEXT_FIELDS.has(fieldName)) {
+      return sanitizeHtml(value, {
+        allowedTags: [],
+        allowedAttributes: {},
+      });
+    }
+
+    // Default: allow basic formatting only
+    return sanitizeHtml(value, {
+      allowedTags: ['p', 'br', 'strong', 'em'],
+      allowedAttributes: {},
+    });
+  }
+
+  // Handle arrays
+  if (Array.isArray(value)) {
+    if (value.length > MAX_ARRAY_LENGTH) {
+      throw new Error(`Array too large in field: ${fieldName}`);
+    }
+    return value.map((item, index) =>
+      sanitizeValue(item, `${fieldName}[${index}]`, depth + 1)
+    );
+  }
+
+  // Handle objects
+  if (typeof value === 'object') {
+    const sanitized: Record<string, any> = {};
+    for (const [key, val] of Object.entries(value)) {
+      sanitized[key] = sanitizeValue(val, key, depth + 1);
+    }
+    return sanitized;
+  }
+
+  // Numbers, booleans, etc. pass through
+  return value;
+}
+
+export function sanitizeInputs(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    if (req.body) {
+      req.body = sanitizeValue(req.body, 'body');
+    }
+
+    if (req.query) {
+      const sanitized: Record<string, any> = {};
+      for (const [key, value] of Object.entries(req.query)) {
+        if (typeof value === 'string') {
+          sanitized[key] = sanitizeValue(value, key);
+        } else {
+          sanitized[key] = value;
+        }
+      }
+      req.query = sanitized;
+    }
+
+    next();
+  } catch (error) {
+    res.status(400).json({
+      message: error instanceof Error ? error.message : 'Invalid input',
+    });
+  }
+}
+```
+
+---
+
+### Security #3: SQL Injection Prevention Check
+
+**Location:** Create `server/middleware/sqlInjectionCheck.ts`
+
+```typescript
+import type { Request, Response, NextFunction } from 'express';
+import { logger } from '../logger';
+
+// Common SQL injection patterns
+const SQL_INJECTION_PATTERNS = [
+  /(\bunion\b.*\bselect\b)/i,
+  /(\bselect\b.*\bfrom\b.*\bwhere\b)/i,
+  /(\binsert\b.*\binto\b.*\bvalues\b)/i,
+  /(\bdelete\b.*\bfrom\b)/i,
+  /(\bdrop\b.*\btable\b)/i,
+  /(\bexec\b.*\()/i,
+  /(\bexecute\b.*\()/i,
+  /(;.*\b(drop|delete|update|insert)\b)/i,
+  /('.*or.*'.*=.*')/i,
+  /(\-\-)/,
+  /(\/\*.*\*\/)/,
+  /(\bxp_.*\b)/i,
+];
+
+function checkForSqlInjection(value: any): boolean {
+  if (typeof value === 'string') {
+    return SQL_INJECTION_PATTERNS.some(pattern => pattern.test(value));
+  }
+
+  if (Array.isArray(value)) {
+    return value.some(item => checkForSqlInjection(item));
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    return Object.values(value).some(val => checkForSqlInjection(val));
+  }
+
+  return false;
+}
+
+export function sqlInjectionCheck(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  // Check body
+  if (req.body && checkForSqlInjection(req.body)) {
+    logger.warn('Potential SQL injection attempt detected', {
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      body: req.body,
+    });
+
+    return res.status(400).json({
+      message: 'Invalid input detected',
+    });
+  }
+
+  // Check query params
+  if (req.query && checkForSqlInjection(req.query)) {
+    logger.warn('Potential SQL injection attempt in query params', {
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      query: req.query,
+    });
+
+    return res.status(400).json({
+      message: 'Invalid query parameters',
+    });
+  }
+
+  // Check URL params
+  if (req.params && checkForSqlInjection(req.params)) {
+    logger.warn('Potential SQL injection attempt in URL params', {
+      path: req.path,
+      method: req.method,
+      ip: req.ip,
+      params: req.params,
+    });
+
+    return res.status(400).json({
+      message: 'Invalid URL parameters',
+    });
+  }
+
+  next();
+}
+```
+
+**Add to `server/index.ts`:**
+
+```typescript
+import { sqlInjectionCheck } from './middleware/sqlInjectionCheck';
+
+// Add after sanitization middleware:
+app.use(sqlInjectionCheck);
+```
+
+---
+
+### Security #4: CORS Configuration
+
+**Location:** Update `server/index.ts`
+
+```typescript
+import cors from 'cors';
+
+// Add CORS configuration
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? [process.env.APP_URL || 'https://your-domain.com']
+  : ['http://localhost:5173', 'http://localhost:5000'];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      logger.warn('CORS blocked request from origin', { origin });
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Request-ID'],
+  exposedHeaders: ['X-Request-ID', 'X-RateLimit-Limit', 'X-RateLimit-Remaining'],
+  maxAge: 86400, // 24 hours
+}));
+```
+
+**Update `package.json`:**
+
+```json
+{
+  "dependencies": {
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17"
+  }
+}
+```
+
+---
+
+<a name="performance-optimizations"></a>
+## 5. PERFORMANCE OPTIMIZATIONS (3-4 hours)
+
+### Performance #1: Database Connection Pooling
+
+**Location:** Update `server/db.ts`
+
+```typescript
+import { Pool } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
+import * as schema from '../shared/schema';
+
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is required');
+}
+
+// Configure connection pool
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,                    // Maximum connections
+  min: 2,                     // Minimum connections
+  idleTimeoutMillis: 30000,   // Close idle connections after 30s
+  connectionTimeoutMillis: 10000, // Timeout after 10s if no connection available
+});
+
+// Monitor pool health
+pool.on('error', (err) => {
+  console.error('Unexpected database pool error', err);
+});
+
+pool.on('connect', (client) => {
+  console.log('New database connection established');
+});
+
+pool.on('remove', (client) => {
+  console.log('Database connection removed from pool');
+});
+
+export const db = drizzle(pool, { schema });
+
+// Export pool status for monitoring
+export function getPoolStatus() {
+  return {
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+  };
+}
+```
+
+**Add pool monitoring endpoint in `server/health.ts`:**
+
+```typescript
+import { getPoolStatus } from './db';
+
+// Add to setupHealthChecks function:
+app.get('/api/health/database', isAuthenticated, (req, res) => {
+  const poolStatus = getPoolStatus();
+  res.json({
+    pool: poolStatus,
+    status: 'ok',
+  });
+});
+```
+
+---
+
+### Performance #2: Query Optimization
+
+**Location:** Update `server/storage.ts`
+
+**Add indexes to frequently queried fields (run this migration):**
+
+```sql
+-- Create database indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_workout_sessions_athlete_date
+ON workout_sessions(athlete_id, date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_exercise_logs_session
+ON exercise_logs(workout_session_id);
+
+CREATE INDEX IF NOT EXISTS idx_set_logs_exercise
+ON set_logs(exercise_log_id, set_number);
+
+CREATE INDEX IF NOT EXISTS idx_program_assignments_athlete
+ON program_assignments(athlete_id, start_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_recipient_read
+ON messages(recipient_id, is_read, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_messages_sender
+ON messages(sender_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_team_members_team
+ON team_members(team_id);
+
+CREATE INDEX IF NOT EXISTS idx_team_members_user
+ON team_members(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_organization_members_org
+ON organization_members(organization_id);
+
+CREATE INDEX IF NOT EXISTS idx_organization_members_user
+ON organization_members(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_programs_org
+ON programs(organization_id, created_at DESC);
+```
+
+**Add pagination helper in `server/storage.ts`:**
+
+```typescript
+interface PaginationOptions {
+  page?: number;
+  limit?: number;
+}
+
+interface PaginatedResult<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+export async function paginate<T>(
+  query: any,
+  countQuery: any,
+  options: PaginationOptions = {}
+): Promise<PaginatedResult<T>> {
+  const page = Math.max(1, options.page || 1);
+  const limit = Math.min(100, Math.max(1, options.limit || 20));
+  const offset = (page - 1) * limit;
+
+  const [data, countResult] = await Promise.all([
+    query.limit(limit).offset(offset),
+    countQuery,
+  ]);
+
+  const total = countResult[0]?.count || 0;
+  const totalPages = Math.ceil(total / limit);
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+    },
+  };
+}
+```
+
+---
+
+### Performance #3: Response Caching
+
+**Location:** Create `server/middleware/cache.ts`
+
+```typescript
+import type { Request, Response, NextFunction } from 'express';
+
+interface CacheOptions {
+  ttl: number; // Time to live in seconds
+  key?: (req: Request) => string;
+}
+
+const cache = new Map<string, { data: any; expires: number }>();
+
+// Clean up expired cache entries every minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of cache.entries()) {
+    if (value.expires < now) {
+      cache.delete(key);
+    }
+  }
+}, 60 * 1000);
+
+export function cacheMiddleware(options: CacheOptions) {
+  const { ttl, key: keyGenerator } = options;
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    // Only cache GET requests
+    if (req.method !== 'GET') {
+      return next();
+    }
+
+    // Generate cache key
+    const cacheKey = keyGenerator
+      ? keyGenerator(req)
+      : `${req.path}:${JSON.stringify(req.query)}`;
+
+    // Check cache
+    const cached = cache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('Cache-Control', `public, max-age=${ttl}`);
+      return res.json(cached.data);
+    }
+
+    // Intercept response
+    const originalJson = res.json.bind(res);
+    res.json = function(data: any) {
+      // Only cache successful responses
+      if (res.statusCode === 200) {
+        cache.set(cacheKey, {
+          data,
+          expires: Date.now() + (ttl * 1000),
+        });
+      }
+
+      res.setHeader('X-Cache', 'MISS');
+      res.setHeader('Cache-Control', `public, max-age=${ttl}`);
+      return originalJson(data);
+    };
+
+    next();
+  };
+}
+
+export function clearCache(pattern?: string | RegExp) {
+  if (!pattern) {
+    cache.clear();
+    return;
+  }
+
+  const regex = typeof pattern === 'string'
+    ? new RegExp(pattern)
+    : pattern;
+
+  for (const key of cache.keys()) {
+    if (regex.test(key)) {
+      cache.delete(key);
+    }
+  }
+}
+```
+
+**Use caching for read-heavy endpoints in `server/routes.ts`:**
+
+```typescript
+import { cacheMiddleware, clearCache } from './middleware/cache';
+
+// Cache exercise list (changes rarely)
+app.get('/api/exercises',
+  isAuthenticated,
+  cacheMiddleware({ ttl: 300 }), // 5 minutes
+  async (req: AuthRequest, res) => {
+    // ... existing logic
+  }
+);
+
+// Cache organization details
+app.get('/api/organizations/:id',
+  isAuthenticated,
+  cacheMiddleware({
+    ttl: 60, // 1 minute
+    key: (req) => `org:${req.params.id}:${(req as any).currentUser?.id}`
+  }),
+  async (req: AuthRequest, res) => {
+    // ... existing logic
+  }
+);
+
+// Clear cache when organization is updated
+app.patch('/api/organizations/:id', isAuthenticated, async (req: AuthRequest, res) => {
+  // ... update logic
+  clearCache(`^org:${req.params.id}:`);
+  res.json(result);
+});
+```
+
+---
+
+### Performance #4: Compression Configuration
+
+**Location:** Update `server/index.ts`
+
+```typescript
+import compression from 'compression';
+
+// Enhanced compression configuration
+app.use(compression({
+  level: 6, // Compression level (0-9)
+  threshold: 1024, // Only compress responses > 1KB
+  filter: (req, res) => {
+    // Don't compress if client doesn't support it
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    // Use compression default filter
+    return compression.filter(req, res);
+  },
+}));
+```
+
+---
+
+<a name="testing-strategy"></a>
+## 6. TESTING STRATEGY (6-8 hours)
+
+### Testing #1: Setup Test Infrastructure
+
+**Update `package.json`:**
+
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage"
+  },
+  "devDependencies": {
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
+    "@testing-library/react": "^14.0.0",
+    "@testing-library/jest-dom": "^6.1.0",
+    "@testing-library/user-event": "^14.5.0",
+    "happy-dom": "^12.10.0",
+    "@vitest/coverage-v8": "^1.0.0"
+  }
+}
+```
+
+**Create `vitest.config.ts`:**
+
+```typescript
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import path from 'path';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'happy-dom',
+    setupFiles: ['./test/setup.ts'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'json', 'html'],
+      exclude: [
+        'node_modules/',
+        'test/',
+        '**/*.config.ts',
+        'dist/',
+      ],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './client/src'),
+      '@shared': path.resolve(__dirname, './shared'),
+    },
+  },
+});
+```
+
+**Create `test/setup.ts`:**
+
+```typescript
+import '@testing-library/jest-dom';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// Cleanup after each test
+afterEach(() => {
+  cleanup();
+});
+
+// Mock environment variables
+process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/test';
+process.env.SESSION_SECRET = 'test-secret-key-that-is-long-enough-for-validation';
+process.env.NODE_ENV = 'test';
+```
+
+---
+
+### Testing #2: API Route Tests
+
+**Create `test/routes/auth.test.ts`:**
+
+```typescript
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { app } from '../../server/index';
+import request from 'supertest';
+
+describe('Authentication Routes', () => {
+  describe('POST /api/auth/register', () => {
+    it('should register a new user', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'test@example.com',
+          password: 'SecurePassword123!',
+          firstName: 'Test',
+          lastName: 'User',
+          role: 'athlete',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('id');
+      expect(response.body.email).toBe('test@example.com');
+    });
+
+    it('should reject weak passwords', async () => {
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'test@example.com',
+          password: 'weak',
+          firstName: 'Test',
+          lastName: 'User',
+          role: 'athlete',
+        });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should reject duplicate emails', async () => {
+      const userData = {
+        email: 'duplicate@example.com',
+        password: 'SecurePassword123!',
+        firstName: 'Test',
+        lastName: 'User',
+        role: 'athlete',
+      };
+
+      // First registration
+      await request(app).post('/api/auth/register').send(userData);
+
+      // Duplicate registration
+      const response = await request(app)
+        .post('/api/auth/register')
+        .send(userData);
+
+      expect(response.status).toBe(409);
+    });
+  });
+
+  describe('POST /api/auth/login', () => {
+    it('should login with valid credentials', async () => {
+      // Register user first
+      await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'login@example.com',
+          password: 'SecurePassword123!',
+          firstName: 'Test',
+          lastName: 'User',
+          role: 'athlete',
+        });
+
+      // Login
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'login@example.com',
+          password: 'SecurePassword123!',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('id');
+      expect(response.headers['set-cookie']).toBeDefined();
+    });
+
+    it('should reject invalid credentials', async () => {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'wrong@example.com',
+          password: 'WrongPassword123!',
+        });
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('GET /api/auth/user', () => {
+    it('should return current user when authenticated', async () => {
+      // Register and login
+      await request(app)
+        .post('/api/auth/register')
+        .send({
+          email: 'current@example.com',
+          password: 'SecurePassword123!',
+          firstName: 'Test',
+          lastName: 'User',
+          role: 'athlete',
+        });
+
+      const loginResponse = await request(app)
+        .post('/api/auth/login')
+        .send({
+          email: 'current@example.com',
+          password: 'SecurePassword123!',
+        });
+
+      const cookie = loginResponse.headers['set-cookie'];
+
+      // Get current user
+      const response = await request(app)
+        .get('/api/auth/user')
+        .set('Cookie', cookie);
+
+      expect(response.status).toBe(200);
+      expect(response.body.email).toBe('current@example.com');
+    });
+
+    it('should return 401 when not authenticated', async () => {
+      const response = await request(app).get('/api/auth/user');
+      expect(response.status).toBe(401);
+    });
+  });
+});
+```
+
+**Add supertest to dependencies:**
+
+```json
+{
+  "devDependencies": {
+    "supertest": "^6.3.3",
+    "@types/supertest": "^6.0.2"
+  }
+}
+```
+
+---
+
+### Testing #3: Component Tests
+
+**Create `test/components/Login.test.tsx`:**
+
+```typescript
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import Login from '../../client/src/pages/login';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: { retry: false },
+  },
+});
+
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <QueryClientProvider client={queryClient}>
+    {children}
+  </QueryClientProvider>
+);
+
+describe('Login Component', () => {
+  it('renders login form', () => {
+    render(<Login />, { wrapper });
+
+    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  it('shows validation errors for empty fields', async () => {
+    render(<Login />, { wrapper });
+
+    const submitButton = screen.getByRole('button', { name: /sign in/i });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/email is required/i)).toBeInTheDocument();
+      expect(screen.getByText(/password is required/i)).toBeInTheDocument();
+    });
+  });
+
+  it('shows error for invalid email format', async () => {
+    render(<Login />, { wrapper });
+
+    const emailInput = screen.getByLabelText(/email/i);
+    fireEvent.change(emailInput, { target: { value: 'invalid-email' } });
+
+    const submitButton = screen.getByRole('button', { name: /sign in/i });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/invalid email/i)).toBeInTheDocument();
+    });
+  });
+});
+```
+
+---
+
+### Testing #4: Integration Tests
+
+**Create `test/integration/workout-flow.test.ts`:**
+
+```typescript
+import { describe, it, expect, beforeAll } from 'vitest';
+import { app } from '../../server/index';
+import request from 'supertest';
+
+describe('Workout Flow Integration', () => {
+  let authCookie: string[];
+  let organizationId: number;
+  let teamId: number;
+  let programId: number;
+  let programAssignmentId: number;
+
+  beforeAll(async () => {
+    // Setup: Create user and login
+    await request(app)
+      .post('/api/auth/register')
+      .send({
+        email: 'athlete@test.com',
+        password: 'SecurePassword123!',
+        firstName: 'Test',
+        lastName: 'Athlete',
+        role: 'athlete',
+      });
+
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .send({
+        email: 'athlete@test.com',
+        password: 'SecurePassword123!',
+      });
+
+    authCookie = loginResponse.headers['set-cookie'];
+
+    // Create organization
+    const orgResponse = await request(app)
+      .post('/api/organizations')
+      .set('Cookie', authCookie)
+      .send({
+        name: 'Test Gym',
+        description: 'Test gym for integration tests',
+      });
+
+    organizationId = orgResponse.body.id;
+
+    // Create team
+    const teamResponse = await request(app)
+      .post('/api/teams')
+      .set('Cookie', authCookie)
+      .send({
+        name: 'Test Team',
+        organizationId,
+      });
+
+    teamId = teamResponse.body.id;
+
+    // Create program
+    const programResponse = await request(app)
+      .post('/api/programs')
+      .set('Cookie', authCookie)
+      .send({
+        name: 'Test Program',
+        durationWeeks: 4,
+        phase: 'strength',
+        organizationId,
+      });
+
+    programId = programResponse.body.id;
+  });
+
+  it('should complete full workout flow', async () => {
+    // Step 1: Assign program to athlete
+    const assignResponse = await request(app)
+      .post('/api/program-assignments')
+      .set('Cookie', authCookie)
+      .send({
+        programId,
+        athleteId: (await request(app)
+          .get('/api/auth/user')
+          .set('Cookie', authCookie)).body.id,
+        startDate: new Date().toISOString(),
+      });
+
+    expect(assignResponse.status).toBe(200);
+    programAssignmentId = assignResponse.body.id;
+
+    // Step 2: Get active program
+    const activeResponse = await request(app)
+      .get('/api/program-assignments/active')
+      .set('Cookie', authCookie);
+
+    expect(activeResponse.status).toBe(200);
+    expect(activeResponse.body.programId).toBe(programId);
+
+    // Step 3: Start workout session
+    const sessionResponse = await request(app)
+      .post('/api/workout-sessions')
+      .set('Cookie', authCookie)
+      .send({
+        date: new Date().toISOString(),
+        programDayId: 1, // Assuming first day exists
+      });
+
+    expect(sessionResponse.status).toBe(200);
+    const sessionId = sessionResponse.body.id;
+
+    // Step 4: Log an exercise
+    const exerciseLogResponse = await request(app)
+      .post(`/api/workout-sessions/${sessionId}/exercise-logs`)
+      .set('Cookie', authCookie)
+      .send({
+        programExerciseId: 1, // Assuming exercise exists
+        notes: 'Felt strong',
+      });
+
+    expect(exerciseLogResponse.status).toBe(200);
+    const exerciseLogId = exerciseLogResponse.body.id;
+
+    // Step 5: Log a set
+    const setResponse = await request(app)
+      .post(`/api/exercise-logs/${exerciseLogId}/sets`)
+      .set('Cookie', authCookie)
+      .send({
+        setNumber: 1,
+        weight: 135,
+        reps: 5,
+        rpe: 7,
+        completed: true,
+      });
+
+    expect(setResponse.status).toBe(200);
+
+    // Step 6: Complete workout
+    const completeResponse = await request(app)
+      .patch(`/api/workout-sessions/${sessionId}`)
+      .set('Cookie', authCookie)
+      .send({
+        status: 'completed',
+        duration: 60,
+        overallRpe: 7,
+      });
+
+    expect(completeResponse.status).toBe(200);
+  });
+});
+```
+
+---
+
+<a name="monitoring"></a>
+## 7. MONITORING & OBSERVABILITY (4-5 hours)
+
+### Monitoring #1: Error Tracking with Sentry
+
+**Install Sentry:**
+
+```bash
+npm install @sentry/node @sentry/react
+```
+
+**Create `server/monitoring/sentry.ts`:**
+
+```typescript
+import * as Sentry from '@sentry/node';
+import type { Express } from 'express';
+
+export function initSentry(app: Express) {
+  if (!process.env.SENTRY_DSN) {
+    console.warn('SENTRY_DSN not configured, error tracking disabled');
+    return;
+  }
+
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+
+    // Performance monitoring
+    integrations: [
+      // HTTP integration for tracing
+      new Sentry.Integrations.Http({ tracing: true }),
+      // Express integration
+      new Sentry.Integrations.Express({ app }),
+    ],
+
+    // Filter out sensitive data
+    beforeSend(event, hint) {
+      // Remove sensitive headers
+      if (event.request?.headers) {
+        delete event.request.headers['authorization'];
+        delete event.request.headers['cookie'];
+      }
+
+      // Remove sensitive body data
+      if (event.request?.data) {
+        const data = event.request.data;
+        if (typeof data === 'object') {
+          delete data.password;
+          delete data.passwordHash;
+          delete data.token;
+        }
+      }
+
+      return event;
+    },
+  });
+
+  // Request handler must be the first middleware
+  app.use(Sentry.Handlers.requestHandler());
+
+  // Tracing handler
+  app.use(Sentry.Handlers.tracingHandler());
+}
+
+export function setupSentryErrorHandler(app: Express) {
+  // Error handler must be before any other error middleware
+  app.use(Sentry.Handlers.errorHandler());
+}
+```
+
+**Update `server/index.ts`:**
+
+```typescript
+import { initSentry, setupSentryErrorHandler } from './monitoring/sentry';
+
+// Initialize Sentry FIRST
+initSentry(app);
+
+// ... other middleware
+
+// ... routes
+
+// Setup Sentry error handler BEFORE other error handlers
+setupSentryErrorHandler(app);
+
+// ... your existing error handler
+```
+
+**Client-side Sentry in `client/src/main.tsx`:**
+
+```typescript
+import * as Sentry from '@sentry/react';
+import { BrowserTracing } from '@sentry/tracing';
+
+if (import.meta.env.PROD && import.meta.env.VITE_SENTRY_DSN) {
+  Sentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    environment: import.meta.env.MODE,
+    integrations: [
+      new BrowserTracing(),
+      new Sentry.Replay({
+        maskAllText: true,
+        blockAllMedia: true,
+      }),
+    ],
+    tracesSampleRate: 0.1,
+    replaysSessionSampleRate: 0.1,
+    replaysOnErrorSampleRate: 1.0,
+  });
+}
+```
+
+---
+
+### Monitoring #2: Performance Metrics
+
+**Create `server/monitoring/metrics.ts`:**
+
+```typescript
+import type { Request, Response, NextFunction } from 'express';
+import { logger } from '../logger';
+
+interface Metrics {
+  requests: {
+    total: number;
+    by_status: Record<string, number>;
+    by_method: Record<string, number>;
+    by_route: Record<string, number>;
+  };
+  response_times: {
+    count: number;
+    sum: number;
+    avg: number;
+    min: number;
+    max: number;
+    p50: number;
+    p95: number;
+    p99: number;
+  };
+  errors: {
+    total: number;
+    by_type: Record<string, number>;
+  };
+}
+
+const metrics: Metrics = {
+  requests: {
+    total: 0,
+    by_status: {},
+    by_method: {},
+    by_route: {},
+  },
+  response_times: {
+    count: 0,
+    sum: 0,
+    avg: 0,
+    min: Infinity,
+    max: 0,
+    p50: 0,
+    p95: 0,
+    p99: 0,
+  },
+  errors: {
+    total: 0,
+    by_type: {},
+  },
+};
+
+const responseTimes: number[] = [];
+const MAX_RESPONSE_TIMES = 1000; // Keep last 1000 response times
+
+export function metricsMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const startTime = Date.now();
+
+  // Capture response finish
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+
+    // Update metrics
+    metrics.requests.total++;
+
+    // By status
+    const status = res.statusCode.toString();
+    metrics.requests.by_status[status] = (metrics.requests.by_status[status] || 0) + 1;
+
+    // By method
+    metrics.requests.by_method[req.method] = (metrics.requests.by_method[req.method] || 0) + 1;
+
+    // By route (remove IDs for aggregation)
+    const route = req.path.replace(/\/\d+/g, '/:id');
+    metrics.requests.by_route[route] = (metrics.requests.by_route[route] || 0) + 1;
+
+    // Response times
+    responseTimes.push(duration);
+    if (responseTimes.length > MAX_RESPONSE_TIMES) {
+      responseTimes.shift();
+    }
+
+    metrics.response_times.count++;
+    metrics.response_times.sum += duration;
+    metrics.response_times.avg = metrics.response_times.sum / metrics.response_times.count;
+    metrics.response_times.min = Math.min(metrics.response_times.min, duration);
+    metrics.response_times.max = Math.max(metrics.response_times.max, duration);
+
+    // Calculate percentiles
+    const sorted = [...responseTimes].sort((a, b) => a - b);
+    metrics.response_times.p50 = sorted[Math.floor(sorted.length * 0.5)] || 0;
+    metrics.response_times.p95 = sorted[Math.floor(sorted.length * 0.95)] || 0;
+    metrics.response_times.p99 = sorted[Math.floor(sorted.length * 0.99)] || 0;
+
+    // Log slow requests
+    if (duration > 1000) {
+      logger.warn('Slow request detected', {
+        method: req.method,
+        path: req.path,
+        duration: `${duration}ms`,
+        status: res.statusCode,
+      });
+    }
+  });
+
+  next();
+}
+
+export function trackError(errorType: string) {
+  metrics.errors.total++;
+  metrics.errors.by_type[errorType] = (metrics.errors.by_type[errorType] || 0) + 1;
+}
+
+export function getMetrics(): Metrics {
+  return JSON.parse(JSON.stringify(metrics)); // Deep clone
+}
+
+export function resetMetrics() {
+  metrics.requests.total = 0;
+  metrics.requests.by_status = {};
+  metrics.requests.by_method = {};
+  metrics.requests.by_route = {};
+  metrics.response_times.count = 0;
+  metrics.response_times.sum = 0;
+  metrics.response_times.avg = 0;
+  metrics.response_times.min = Infinity;
+  metrics.response_times.max = 0;
+  metrics.errors.total = 0;
+  metrics.errors.by_type = {};
+  responseTimes.length = 0;
+}
+```
+
+**Add metrics endpoint in `server/routes.ts`:**
+
+```typescript
+import { getMetrics, resetMetrics } from './monitoring/metrics';
+import { isCoach } from './utils/roleHelpers';
+
+// Metrics endpoint (admin/coach only)
+app.get('/api/metrics', isAuthenticated, async (req: AuthRequest, res) => {
+  const user = req.currentUser!;
+
+  // Only admins and coaches can view metrics
+  if (!isCoach(user.role)) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  const metrics = getMetrics();
+  res.json(metrics);
+});
+
+// Reset metrics (admin only)
+app.post('/api/metrics/reset', isAuthenticated, async (req: AuthRequest, res) => {
+  const user = req.currentUser!;
+
+  if (user.role !== 'admin') {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+
+  resetMetrics();
+  res.json({ message: 'Metrics reset successfully' });
+});
+```
+
+**Add to `server/index.ts`:**
+
+```typescript
+import { metricsMiddleware } from './monitoring/metrics';
+
+// Add after request ID middleware:
+app.use(metricsMiddleware);
+```
+
+---
+
+### Monitoring #3: Structured Logging Enhancement
+
+**Update `server/logger.ts`:**
+
+```typescript
+// Add log levels enum
+export enum LogLevel {
+  DEBUG = 0,
+  INFO = 1,
+  WARN = 2,
+  ERROR = 3,
+}
+
+// Add structured log context
+export interface LogContext {
+  requestId?: string;
+  userId?: string;
+  organizationId?: string;
+  teamId?: string;
+  duration?: number;
+  [key: string]: any;
+}
+
+// Add log aggregation for production
+const LOG_BUFFER: any[] = [];
+const LOG_BUFFER_MAX_SIZE = 100;
+const LOG_FLUSH_INTERVAL = 10000; // 10 seconds
+
+class Logger {
+  // ... existing code
+
+  private flushLogs() {
+    if (LOG_BUFFER.length === 0) return;
+
+    // In production, send to logging service (e.g., CloudWatch, Datadog)
+    if (process.env.NODE_ENV === 'production') {
+      // TODO: Implement log shipping
+      // await sendLogsToService(LOG_BUFFER);
+    }
+
+    LOG_BUFFER.length = 0;
+  }
+
+  private bufferLog(entry: any) {
+    LOG_BUFFER.push(entry);
+
+    if (LOG_BUFFER.length >= LOG_BUFFER_MAX_SIZE) {
+      this.flushLogs();
+    }
+  }
+
+  log(level: LogLevel, message: string, context?: LogContext): void {
+    // ... existing log logic
+
+    // Buffer for batch shipping
+    if (process.env.NODE_ENV === 'production') {
+      this.bufferLog(logEntry);
+    }
+  }
+}
+
+// Flush logs periodically
+if (process.env.NODE_ENV === 'production') {
+  setInterval(() => {
+    logger['flushLogs']();
+  }, LOG_FLUSH_INTERVAL);
+}
+
+// Flush on process exit
+process.on('beforeExit', () => {
+  logger['flushLogs']();
+});
+```
+
+---
+
+<a name="ux-improvements"></a>
+## 8. USER EXPERIENCE IMPROVEMENTS (3-4 hours)
+
+### UX #1: Feedback Mechanism
+
+**Create `server/routes/feedback.ts`:**
+
+```typescript
+import type { Express } from 'express';
+import { db } from '../db';
+import { isAuthenticated, type AuthRequest } from '../localAuth';
+import { logger } from '../logger';
+import { z } from 'zod';
+
+const feedbackSchema = z.object({
+  page: z.string(),
+  type: z.enum(['bug', 'suggestion', 'question', 'other']),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  message: z.string().min(10).max(5000),
+  userAgent: z.string().optional(),
+  screenshot: z.string().optional(), // base64 encoded
+});
+
+// Create feedback table (add to schema)
+export const feedback = pgTable('feedback', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').references(() => users.id),
+  page: text('page').notNull(),
+  type: text('type', { enum: ['bug', 'suggestion', 'question', 'other'] }).notNull(),
+  severity: text('severity', { enum: ['low', 'medium', 'high', 'critical'] }),
+  message: text('message').notNull(),
+  userAgent: text('user_agent'),
+  screenshot: text('screenshot'),
+  status: text('status', { enum: ['new', 'acknowledged', 'in-progress', 'resolved', 'closed'] }).default('new'),
+  createdAt: timestamp('created_at').defaultNow(),
+  resolvedAt: timestamp('resolved_at'),
+});
+
+export function setupFeedbackRoutes(app: Express) {
+  // Submit feedback
+  app.post('/api/feedback', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.currentUser!.id;
+      const data = feedbackSchema.parse(req.body);
+
+      const newFeedback = await db.insert(feedback).values({
+        userId,
+        ...data,
+      }).returning();
+
+      logger.info('Feedback submitted', {
+        feedbackId: newFeedback[0].id,
+        userId,
+        type: data.type,
+        severity: data.severity,
+      });
+
+      res.json({
+        message: 'Thank you for your feedback!',
+        id: newFeedback[0].id,
+      });
+    } catch (error) {
+      logger.error('submitting feedback', error);
+      res.status(400).json({ message: 'Failed to submit feedback' });
+    }
+  });
+
+  // Get user's feedback history
+  app.get('/api/feedback', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.currentUser!.id;
+
+      const userFeedback = await db.query.feedback.findMany({
+        where: (feedback, { eq }) => eq(feedback.userId, userId),
+        orderBy: (feedback, { desc }) => [desc(feedback.createdAt)],
+      });
+
+      res.json(userFeedback);
+    } catch (error) {
+      logger.error('getting feedback', error);
+      res.status(500).json({ message: 'Failed to get feedback' });
+    }
+  });
+
+  // Admin: Get all feedback
+  app.get('/api/feedback/all', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const user = req.currentUser!;
+
+      if (user.role !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const { status, type, severity } = req.query;
+
+      let query = db.select().from(feedback);
+
+      // Apply filters
+      // ... implement filtering logic
+
+      const allFeedback = await query;
+      res.json(allFeedback);
+    } catch (error) {
+      logger.error('getting all feedback', error);
+      res.status(500).json({ message: 'Failed to get feedback' });
+    }
+  });
+}
+```
+
+**Add feedback button in `client/src/App.tsx`:**
+
+```typescript
+import { useState } from 'react';
+import { MessageSquare } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { useMutation } from '@tanstack/react-query';
+
+function FeedbackButton() {
+  const [open, setOpen] = useState(false);
+  const [type, setType] = useState<'bug' | 'suggestion' | 'question' | 'other'>('bug');
+  const [message, setMessage] = useState('');
+  const { toast } = useToast();
+
+  const submitFeedback = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Feedback submitted! Thank you.' });
+      setOpen(false);
+      setMessage('');
+    },
+    onError: () => {
+      toast({
+        title: 'Failed to submit feedback',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className="fixed bottom-4 right-4 z-50"
+      >
+        <MessageSquare className="mr-2 h-4 w-4" />
+        Feedback
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send Feedback</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <Select value={type} onValueChange={(v: any) => setType(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="bug">Bug Report</SelectItem>
+                <SelectItem value="suggestion">Suggestion</SelectItem>
+                <SelectItem value="question">Question</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Textarea
+              placeholder="Describe your feedback..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={6}
+            />
+
+            <Button
+              onClick={() => {
+                submitFeedback.mutate({
+                  page: window.location.pathname,
+                  type,
+                  message,
+                  userAgent: navigator.userAgent,
+                });
+              }}
+              disabled={submitFeedback.isPending || message.length < 10}
+              className="w-full"
+            >
+              {submitFeedback.isPending ? 'Submitting...' : 'Submit Feedback'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+// Add to App.tsx:
+function App() {
+  return (
+    <>
+      {/* ... existing app content */}
+      <FeedbackButton />
+    </>
+  );
+}
+```
+
+---
+
+### UX #2: Offline Detection
+
+**Create `client/src/hooks/useOnlineStatus.ts`:**
+
+```typescript
+import { useState, useEffect } from 'react';
+import { useToast } from './use-toast';
+
+export function useOnlineStatus() {
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    function handleOnline() {
+      setIsOnline(true);
+      toast({
+        title: 'Back online',
+        description: 'Connection restored',
+      });
+    }
+
+    function handleOffline() {
+      setIsOnline(false);
+      toast({
+        title: 'Connection lost',
+        description: 'Some features may not work offline',
+        variant: 'destructive',
+      });
+    }
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [toast]);
+
+  return isOnline;
+}
+```
+
+**Add to `client/src/App.tsx`:**
+
+```typescript
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+
+function App() {
+  const isOnline = useOnlineStatus();
+
+  return (
+    <>
+      {!isOnline && (
+        <div className="fixed top-0 left-0 right-0 bg-destructive text-destructive-foreground p-2 text-center z-50">
+          You are offline. Some features may not work.
+        </div>
+      )}
+      {/* ... rest of app */}
+    </>
+  );
+}
+```
+
+---
+
+### UX #3: Loading States & Skeletons
+
+**Create `client/src/components/ui/skeleton.tsx` (if not exists):**
+
+```typescript
+import { cn } from "@/lib/utils"
+
+function Skeleton({
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn("animate-pulse rounded-md bg-muted", className)}
+      {...props}
+    />
+  )
+}
+
+export { Skeleton }
+```
+
+**Example usage in pages:**
+
+```typescript
+import { Skeleton } from '@/components/ui/skeleton';
+
+function DashboardPage() {
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['/api/statistics'],
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
+
+  return (
+    // ... actual content
+  );
+}
+```
+
+---
+
+### UX #4: Feature Flags
+
+**Create `server/features.ts`:**
+
+```typescript
+export interface FeatureFlags {
+  messaging: boolean;
+  habitTracking: boolean;
+  videoAnalysis: boolean;
+  aiCoaching: boolean;
+  mobileApp: boolean;
+  socialFeatures: boolean;
+}
+
+const DEFAULT_FLAGS: FeatureFlags = {
+  messaging: true,
+  habitTracking: false,
+  videoAnalysis: false,
+  aiCoaching: false,
+  mobileApp: false,
+  socialFeatures: false,
+};
+
+// Feature flags can be overridden via environment variables
+export function getFeatureFlags(): FeatureFlags {
+  return {
+    messaging: process.env.FEATURE_MESSAGING === 'true' || DEFAULT_FLAGS.messaging,
+    habitTracking: process.env.FEATURE_HABIT_TRACKING === 'true' || DEFAULT_FLAGS.habitTracking,
+    videoAnalysis: process.env.FEATURE_VIDEO_ANALYSIS === 'true' || DEFAULT_FLAGS.videoAnalysis,
+    aiCoaching: process.env.FEATURE_AI_COACHING === 'true' || DEFAULT_FLAGS.aiCoaching,
+    mobileApp: process.env.FEATURE_MOBILE_APP === 'true' || DEFAULT_FLAGS.mobileApp,
+    socialFeatures: process.env.FEATURE_SOCIAL === 'true' || DEFAULT_FLAGS.socialFeatures,
+  };
+}
+
+// Add endpoint in routes:
+app.get('/api/features', (req, res) => {
+  res.json(getFeatureFlags());
+});
+```
+
+**Client-side feature flags hook:**
+
+```typescript
+import { useQuery } from '@tanstack/react-query';
+
+export function useFeatureFlags() {
+  const { data } = useQuery({
+    queryKey: ['/api/features'],
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
+  return data || {};
+}
+
+// Usage:
+function MessagingPage() {
+  const features = useFeatureFlags();
+
+  if (!features.messaging) {
+    return <div>Messaging feature is currently disabled.</div>;
+  }
+
+  return (
+    // ... messaging UI
+  );
+}
+```
+
+---
+
+<a name="beta-preparation"></a>
+## 9. BETA TESTING PREPARATION (2-3 hours)
+
+### Beta #1: User Onboarding Tour
+
+**Install shepherd.js:**
+
+```bash
+npm install shepherd.js
+```
+
+**Create `client/src/hooks/useTour.ts`:**
+
+```typescript
+import { useEffect } from 'react';
+import Shepherd from 'shepherd.js';
+import 'shepherd.js/dist/css/shepherd.css';
+
+export function useTour() {
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('hasSeenTour');
+
+    if (hasSeenTour) return;
+
+    const tour = new Shepherd.Tour({
+      useModalOverlay: true,
+      defaultStepOptions: {
+        cancelIcon: {
+          enabled: true,
+        },
+        classes: 'shadow-md bg-purple-dark',
+        scrollTo: { behavior: 'smooth', block: 'center' },
+      },
+    });
+
+    tour.addStep({
+      id: 'welcome',
+      text: 'Welcome to your workout management platform! Let me show you around.',
+      buttons: [
+        {
+          text: 'Skip',
+          action: tour.cancel,
+        },
+        {
+          text: 'Next',
+          action: tour.next,
+        },
+      ],
+    });
+
+    tour.addStep({
+      id: 'dashboard',
+      text: 'This is your dashboard. You can see your workout stats and upcoming sessions.',
+      attachTo: {
+        element: '[data-tour="dashboard"]',
+        on: 'bottom',
+      },
+      buttons: [
+        {
+          text: 'Back',
+          action: tour.back,
+        },
+        {
+          text: 'Next',
+          action: tour.next,
+        },
+      ],
+    });
+
+    // Add more steps...
+
+    tour.on('complete', () => {
+      localStorage.setItem('hasSeenTour', 'true');
+    });
+
+    tour.start();
+
+    return () => {
+      tour.cancel();
+    };
+  }, []);
+}
+```
+
+---
+
+### Beta #2: Sample Data Generator
+
+**Create `server/seedSampleData.ts`:**
+
+```typescript
+import { db } from './db';
+import {
+  users,
+  organizations,
+  teams,
+  programs,
+  programWeeks,
+  programDays,
+  programExercises,
+  exercises,
+} from '../shared/schema';
+import { hashPassword } from './localAuth';
+
+export async function seedSampleData(userId: number) {
+  try {
+    // Create sample exercises
+    const sampleExercises = [
+      { name: 'Back Squat', category: 'squat', muscleGroup: 'legs', equipment: 'barbell' },
+      { name: 'Bench Press', category: 'press', muscleGroup: 'chest', equipment: 'barbell' },
+      { name: 'Deadlift', category: 'deadlift', muscleGroup: 'back', equipment: 'barbell' },
+      { name: 'Front Squat', category: 'squat', muscleGroup: 'legs', equipment: 'barbell' },
+      { name: 'Clean', category: 'clean', muscleGroup: 'full-body', equipment: 'barbell' },
+    ];
+
+    const createdExercises = await db.insert(exercises)
+      .values(sampleExercises)
+      .returning();
+
+    // Create sample program
+    const org = await db.query.organizations.findFirst({
+      where: (orgs, { eq }) => eq(orgs.ownerId, userId),
+    });
+
+    if (!org) {
+      throw new Error('User must have an organization first');
+    }
+
+    const program = await db.insert(programs).values({
+      name: 'Sample Strength Program',
+      description: 'A sample 4-week strength program to get you started',
+      durationWeeks: 4,
+      phase: 'strength',
+      organizationId: org.id,
+      createdBy: userId,
+    }).returning();
+
+    // Create weeks
+    for (let weekNum = 1; weekNum <= 4; weekNum++) {
+      const week = await db.insert(programWeeks).values({
+        programId: program[0].id,
+        weekNumber: weekNum,
+        name: `Week ${weekNum}`,
+      }).returning();
+
+      // Create 3 days per week
+      for (let dayNum = 1; dayNum <= 3; dayNum++) {
+        const day = await db.insert(programDays).values({
+          weekId: week[0].id,
+          dayNumber: dayNum,
+          name: ['Squat Day', 'Bench Day', 'Deadlift Day'][dayNum - 1],
+        }).returning();
+
+        // Add exercises to day
+        const dayExercises = [
+          [createdExercises[0], createdExercises[3]], // Squat Day
+          [createdExercises[1]], // Bench Day
+          [createdExercises[2]], // Deadlift Day
+        ][dayNum - 1];
+
+        for (let i = 0; i < dayExercises.length; i++) {
+          await db.insert(programExercises).values({
+            dayId: day[0].id,
+            exerciseId: dayExercises[i].id,
+            sets: 5,
+            reps: 5,
+            intensity: 80,
+            rest: 180,
+            order: i + 1,
+          });
+        }
+      }
+    }
+
+    return { success: true, programId: program[0].id };
+  } catch (error) {
+    console.error('Error seeding sample data:', error);
+    throw error;
+  }
+}
+```
+
+**Add endpoint in `server/routes.ts`:**
+
+```typescript
+import { seedSampleData } from './seedSampleData';
+
+app.post('/api/seed-sample-data', isAuthenticated, async (req: AuthRequest, res) => {
+  try {
+    const userId = req.currentUser!.id;
+    const result = await seedSampleData(userId);
+    res.json(result);
+  } catch (error) {
+    logger.error('seeding sample data', error);
+    res.status(500).json({ message: 'Failed to seed sample data' });
+  }
+});
+```
+
+---
+
+### Beta #3: User Documentation
+
+**Create `docs/USER_GUIDE.md`:**
+
+```markdown
+# User Guide - Weightlifting Platform
+
+## Getting Started
+
+### 1. Creating an Account
+
+1. Go to the registration page
+2. Enter your email and password (minimum 12 characters)
+3. Select your role:
+   - **Athlete**: Log workouts and track progress
+   - **Coach**: Create programs and manage teams
+   - **Admin**: Manage organizations
+
+### 2. Creating an Organization (Coaches/Admins)
+
+1. After login, click "Create Organization"
+2. Enter organization name and description
+3. You'll be assigned an invite code to share with members
+
+### 3. Building a Training Program (Coaches)
+
+#### Step-by-step:
+
+1. Navigate to **Programs** page
+2. Click **Create Program**
+3. Fill in:
+   - Program name
+   - Duration (weeks)
+   - Training phase (hypertrophy, strength, power, etc.)
+4. Add weeks to your program
+5. For each week, add training days
+6. For each day, add exercises with:
+   - Sets, reps, intensity
+   - Rest periods
+   - Notes/instructions
+
+### 4. Logging Workouts (Athletes)
+
+1. Navigate to **Workout** page
+2. Start your scheduled workout
+3. For each exercise:
+   - Log weight and reps for each set
+   - Add RPE (Rate of Perceived Exertion, 1-10)
+   - Mark sets as completed
+4. Complete workout and add overall notes
+
+### 5. Viewing Progress (All Users)
+
+1. Go to **Progress** page
+2. View:
+   - Total workouts completed
+   - Volume over time
+   - Personal records
+   - Compliance rate
+
+## Tips & Best Practices
+
+- **RPE Scale**: 1-10, where 10 is maximum effort
+- **Rest Timer**: Use the built-in timer between sets
+- **Notes**: Add notes to track how exercises felt
+- **Consistency**: Log all workouts for accurate tracking
+
+## Need Help?
+
+- Click the **Feedback** button (bottom right) to report issues
+- Contact support: support@yourplatform.com
+```
+
+---
+
+<a name="deployment-checklist"></a>
+## 10. PRODUCTION DEPLOYMENT CHECKLIST
+
+### Pre-Deployment Checklist
+
+#### Environment Variables
+- [ ] `DATABASE_URL` - Production database URL (verified working)
+- [ ] `SESSION_SECRET` - Strong 32+ character secret (use `openssl rand -base64 32`)
+- [ ] `CSRF_SECRET` - Strong secret (optional, defaults to SESSION_SECRET)
+- [ ] `NODE_ENV=production`
+- [ ] `APP_VERSION` - Set version number
+- [ ] `APP_URL` - Production URL (for CORS)
+- [ ] `SENTRY_DSN` - Error tracking (if using Sentry)
+- [ ] `LOG_LEVEL=info` - Production log level
+
+#### Security
+- [ ] All console.log replaced with logger
+- [ ] CSRF protection enabled and tested
+- [ ] Rate limiting configured and tested
+- [ ] SQL injection checks in place
+- [ ] XSS sanitization working
+- [ ] CORS configured with production origins only
+- [ ] Session cookies secure flag enabled
+- [ ] Password requirements enforced (12+ chars)
+- [ ] No secrets in git history
+
+#### Database
+- [ ] All migrations applied
+- [ ] Indexes created for performance
+- [ ] Connection pooling configured
+- [ ] Backup strategy in place
+- [ ] Database SSL/TLS enabled
+
+#### Performance
+- [ ] Compression enabled
+- [ ] Response caching implemented for read-heavy endpoints
+- [ ] Database queries optimized (no N+1)
+- [ ] Pagination implemented for large lists
+- [ ] Static assets minified
+
+#### Monitoring
+- [ ] Health check endpoints working
+- [ ] Error tracking configured (Sentry or similar)
+- [ ] Logging structured and working
+- [ ] Metrics collection enabled
+- [ ] Alerts configured for critical errors
+
+#### Testing
+- [ ] All critical paths have tests
+- [ ] Integration tests passing
+- [ ] Load testing completed
+- [ ] Security scan completed
+
+#### Documentation
+- [ ] API endpoints documented
+- [ ] Environment variables documented
+- [ ] Deployment process documented
+- [ ] User guide created
+- [ ] README updated
+
+#### Legal & Compliance
+- [ ] Privacy policy created
+- [ ] Terms of service created
+- [ ] Cookie consent (if in EU/California)
+- [ ] Data retention policy defined
+
+#### Infrastructure
+- [ ] CI/CD pipeline configured
+- [ ] Staging environment tested
+- [ ] Database backups automated
+- [ ] SSL certificate valid
+- [ ] DNS configured
+- [ ] CDN configured (if using)
+
+#### Code Quality
+- [ ] No TODO comments in production code
+- [ ] No debug code left in
+- [ ] Unused files removed (attached_assets, etc.)
+- [ ] TypeScript strict mode passing
+- [ ] Linter warnings addressed
+
+#### Post-Deployment
+- [ ] Smoke tests on production
+- [ ] Health check monitoring set up
+- [ ] Error tracking verified
+- [ ] Performance monitoring active
+- [ ] Rollback plan documented
+
+---
+
+## Summary
+
+### Estimated Total Time: 35-45 hours
+
+| Priority | Task | Time | Status |
+|----------|------|------|--------|
+| P0 | Critical bug fixes | 3-4h | ⚠️ URGENT |
+| P1 | Code quality cleanup | 2-3h | ⚠️ URGENT |
+| P2 | Infrastructure (health, monitoring) | 4-6h | Important |
+| P2 | Security enhancements | 3-4h | Important |
+| P2 | Performance optimization | 3-4h | Important |
+| P3 | Testing infrastructure | 6-8h | Recommended |
+| P3 | Monitoring & observability | 4-5h | Recommended |
+| P3 | UX improvements | 3-4h | Nice to have |
+| P3 | Beta preparation | 2-3h | Nice to have |
+
+### Recommended Implementation Order:
+
+1. **Week 1 - Critical Fixes** (5-7 hours)
+   - Fix 3 missing API endpoints
+   - Remove debug logs
+   - Clean up duplicate routes
+   - Delete attached_assets folder
+
+2. **Week 2 - Infrastructure** (8-10 hours)
+   - Add health checks
+   - Configure monitoring
+   - Implement graceful shutdown
+   - Add environment validation
+
+3. **Week 3 - Security & Performance** (6-8 hours)
+   - Enhanced rate limiting
+   - Input sanitization improvements
+   - Database optimization
+   - Response caching
+
+4. **Week 4 - Testing & Polish** (8-10 hours)
+   - Set up test infrastructure
+   - Write critical path tests
+   - Add UX improvements
+   - Create documentation
+
+5. **Week 5 - Beta Launch** (8-10 hours)
+   - Beta testing with small group
+   - Bug fixes from feedback
+   - Performance tuning
+   - Documentation updates
+
+### Success Metrics for Production:
+
+- ✅ Zero critical bugs
+- ✅ < 200ms average response time
+- ✅ 99.9% uptime
+- ✅ Zero security vulnerabilities
+- ✅ > 80% test coverage on critical paths
+- ✅ All error tracking working
+- ✅ Positive user feedback
+
+---
+
+**Next Steps:**
+
+1. Start with critical bug fixes (Section 1)
+2. Test thoroughly in development
+3. Deploy to staging environment
+4. Run through deployment checklist
+5. Beta test with 5-10 users
+6. Monitor closely for first week
+7. Iterate based on feedback
+8. Scale gradually
+
+Good luck with your production launch! 🚀
