@@ -9,7 +9,7 @@ import { MessageSquare, Send, User, AlertTriangle, RefreshCw, Users } from "luci
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { User as UserType, Message, OrganizationMember } from "@shared/schema";
+import type { User as UserType, MessageDto, OrganizationMember } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EmptyState } from "@/components/EmptyState";
@@ -59,7 +59,7 @@ export default function Messages() {
     isError: messagesError,
     error: messagesErrorObj,
     refetch: refetchMessages 
-  } = useQuery<Message[]>({
+  } = useQuery<MessageDto[]>({
     queryKey: ['/api/messages', selectedUserId],
     enabled: !!selectedUserId,
     refetchInterval: 5000,
@@ -75,12 +75,12 @@ export default function Messages() {
         queryKey: ['/api/messages', selectedUserId],
       });
 
-      const previousMessages = queryClient.getQueryData<Message[]>([
+      const previousMessages = queryClient.getQueryData<MessageDto[]>([
         '/api/messages',
         selectedUserId,
       ]);
 
-      const optimisticMessage: Message = {
+      const optimisticMessage: MessageDto = {
         id: 'temp-' + Date.now(),
         senderId: user!.id,
         recipientId: newMessage.recipientId,
@@ -90,7 +90,7 @@ export default function Messages() {
         workoutSessionId: null,
       };
 
-      queryClient.setQueryData<Message[]>(
+      queryClient.setQueryData<MessageDto[]>(
         ['/api/messages', selectedUserId],
         (old = []) => [...old, optimisticMessage]
       );
@@ -156,12 +156,14 @@ export default function Messages() {
   if (!orgsLoading && organizations.length === 0) {
     return (
       <div className="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">
-        <EmptyState
-          icon={Users}
-          title="No organization"
-          description="You need to create or join an organization to send messages"
-          variant="page"
-        />
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <EmptyState
+            icon={Users}
+            title="No organization"
+            description="You need to create or join an organization to send messages"
+            variant="inline"
+          />
+        </div>
       </div>
     );
   }

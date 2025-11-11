@@ -655,3 +655,8 @@ export type InsertSetLog = z.infer<typeof insertSetLogSchema>;
 
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+export type MessageDto = Omit<Message, "createdAt" | "readAt"> & {
+  createdAt: string;
+  readAt: string | null;
+};
