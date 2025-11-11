@@ -78,8 +78,8 @@ export default function Register() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
       toast({
-        title: "Invalid Email",
-        description: "Please enter a valid email address",
+        title: "Invalid Email Address",
+        description: "Please enter a valid email address (e.g., name@example.com)",
         variant: "destructive",
       });
       return;
@@ -88,8 +88,8 @@ export default function Register() {
     // Validate name lengths
     if (firstName.trim().length < 2 || lastName.trim().length < 2) {
       toast({
-        title: "Validation Error",
-        description: "First and last name must be at least 2 characters",
+        title: "Name Too Short",
+        description: "Both first and last names must be at least 2 characters long",
         variant: "destructive",
       });
       return;
@@ -98,8 +98,8 @@ export default function Register() {
     // Validate password length (NIST SP 800-63B: length over complexity)
     if (password.length < 12) {
       toast({
-        title: "Validation Error",
-        description: "Password must be at least 12 characters",
+        title: "Password Too Short",
+        description: "For your security, passwords must be at least 12 characters long",
         variant: "destructive",
       });
       return;

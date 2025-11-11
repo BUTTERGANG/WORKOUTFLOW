@@ -78,23 +78,23 @@ export default function Onboarding() {
     const trimmedName = orgName.trim();
     if (!trimmedName) {
       toast({
-        title: "Validation Error",
-        description: "Organization name is required",
+        title: "Organization Name Required",
+        description: "Please enter a name for your organization",
         variant: "destructive",
       });
       return;
     }
     if (trimmedName.length < 3) {
       toast({
-        title: "Validation Error",
-        description: "Organization name must be at least 3 characters",
+        title: "Name Too Short",
+        description: "Organization name must be at least 3 characters long",
         variant: "destructive",
       });
       return;
     }
     if (trimmedName.length > 100) {
       toast({
-        title: "Validation Error",
+        title: "Name Too Long",
         description: "Organization name must be less than 100 characters",
         variant: "destructive",
       });
@@ -109,23 +109,23 @@ export default function Onboarding() {
     const trimmedName = teamName.trim();
     if (!trimmedName) {
       toast({
-        title: "Validation Error",
-        description: "Team name is required",
+        title: "Team Name Required",
+        description: "Please enter a name for your team",
         variant: "destructive",
       });
       return;
     }
     if (trimmedName.length < 3) {
       toast({
-        title: "Validation Error",
-        description: "Team name must be at least 3 characters",
+        title: "Name Too Short",
+        description: "Team name must be at least 3 characters long",
         variant: "destructive",
       });
       return;
     }
     if (trimmedName.length > 100) {
       toast({
-        title: "Validation Error",
+        title: "Name Too Long",
         description: "Team name must be less than 100 characters",
         variant: "destructive",
       });
