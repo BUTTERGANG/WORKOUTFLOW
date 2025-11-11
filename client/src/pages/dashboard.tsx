@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { Organization } from "@shared/schema";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 
 export default function Dashboard() {
   const [, setLocation] = useLocation();
@@ -95,14 +96,7 @@ export default function Dashboard() {
   }, [organizations, orgsLoading, setLocation, user]);
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (!user) return null;

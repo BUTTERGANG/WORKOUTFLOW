@@ -8,6 +8,7 @@ import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Organization } from "@shared/schema";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
 
 export default function JoinViaInvite() {
   const [, params] = useRoute("/join/:inviteCode");
@@ -69,11 +70,7 @@ export default function JoinViaInvite() {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" data-testid="spinner-loading" />
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (error) {

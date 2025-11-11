@@ -36,6 +36,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { Program, ProgramWeek, ProgramDay, ProgramExercise, Exercise, ProgramAssignment, User } from "@shared/schema";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function Programs() {
   const { toast } = useToast();
@@ -163,14 +165,7 @@ export default function Programs() {
   }, [isAuthenticated, isLoading, toast]);
 
   if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-center">
-          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner fullScreen />;
   }
 
   if (!user) return null;
@@ -188,22 +183,13 @@ export default function Programs() {
           </div>
 
           {loadingAvailable ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-                <p className="text-muted-foreground">Loading programs...</p>
-              </div>
-            </div>
+            <LoadingSpinner message="Loading programs..." />
           ) : !availablePrograms || availablePrograms.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <FileText className="mb-4 h-16 w-16 text-muted-foreground" />
-                <h3 className="mb-2 text-xl font-semibold">No Programs Available</h3>
-                <p className="text-center text-muted-foreground max-w-sm">
-                  Your coaches haven't created any template programs yet. Check back later!
-                </p>
-              </CardContent>
-            </Card>
+            <EmptyState
+              icon={FileText}
+              title="No Programs Available"
+              description="Your coaches haven't created any template programs yet. Check back later!"
+            />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {availablePrograms.map((program) => (
@@ -553,8 +539,9 @@ function ProgramBuilderDialog({
                                       setEditDayName(day.name || "");
                                     }}
                                     data-testid={`button-edit-day-${day.id}`}
+                                    aria-label={`Edit ${day.name || 'day'}`}
                                   >
-                                    <Pencil className="h-4 w-4" />
+                                    <Pencil className="h-4 w-4" aria-hidden="true" />
                                   </Button>
                                 </div>
                                 <p className="text-sm text-muted-foreground">
@@ -848,8 +835,9 @@ function AddExerciseDialog({
                                 className="h-11 w-11 sm:h-8 sm:w-8"
                                 onClick={() => handleEdit(ex)}
                                 data-testid={`button-edit-exercise-${ex.id}`}
+                                aria-label={`Edit ${ex.exercise.name}`}
                               >
-                                <Pencil className="h-4 w-4" />
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
                               </Button>
                               <Button
                                 size="icon"
@@ -861,8 +849,9 @@ function AddExerciseDialog({
                                   }
                                 }}
                                 data-testid={`button-delete-exercise-${ex.id}`}
+                                aria-label={`Delete ${ex.exercise.name}`}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Trash2 className="h-4 w-4" aria-hidden="true" />
                               </Button>
                             </div>
                           </div>

@@ -2,7 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, lt } from "drizzle-orm";
 import passport from "passport";
 import { setupLocalAuth, isAuthenticated, hashPassword } from "./localAuth";
 import { logger } from "./logger";
@@ -36,6 +36,8 @@ import {
   programAssignments,
   teamJoinRequests,
   organizationJoinRequests,
+  workoutSessions,
+  messages,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -158,14 +160,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
-      console.log("Creating organization for user:", userId, "with body:", req.body);
+      logger.info("Creating organization", { userId });
       const data = insertOrganizationSchema.parse({ ...req.body, ownerId: userId });
       const org = await storage.createOrganization(data);
       
       // Update user role to admin (organization owner)
       await storage.updateUserRole(userId, 'admin');
       
-      console.log("Organization created successfully:", org.id);
+      logger.info("Organization created", { organizationId: org.id, userId });
       res.json(org);
     } catch (error: any) {
       logger.error("creating organization", error);
@@ -1070,7 +1072,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/days/:dayId/exercises', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/program-days/:dayId/exercises', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -1120,7 +1122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/days/:dayId/exercises', isAuthenticated, async (req: AuthRequest, res) => {
+  app.get('/api/program-days/:dayId/exercises', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -1213,6 +1215,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       logger.error("creating program assignment", error);
       // Don't expose error.message - it may contain database details
       res.status(400).json({ message: "Failed to create program assignment" });
+    }
+  });
+
+  // Get active program assignment for current user
+  app.get('/api/program-assignments/active', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.currentUser!.id;
+
+      logger.info('Fetching active program assignment', { userId });
+
+      // Get all assignments for this user
+      const assignments = await storage.getAthleteAssignments(userId);
+
+      // Find the most recent active assignment
+      const activeAssignments = assignments.filter(a => a.status === 'active');
+
+      if (activeAssignments.length === 0) {
+        return res.status(404).json({
+          message: "No active program assignment found"
+        });
+      }
+
+      // Get the most recent one by start date
+      const mostRecent = activeAssignments.sort((a, b) => 
+        new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+      )[0];
+
+      // Fetch the full program structure with weeks, days, and exercises
+      const fullProgram = await storage.getProgramWeeks(mostRecent.programId);
+
+      // Hydrate the assignment with full program structure
+      const assignmentWithFullProgram = {
+        ...mostRecent,
+        program: {
+          ...mostRecent.program,
+          weeks: fullProgram
+        }
+      };
+
+      logger.info('Active program assignment found', {
+        userId,
+        assignmentId: assignmentWithFullProgram.id,
+        programId: assignmentWithFullProgram.programId,
+      });
+
+      res.json(assignmentWithFullProgram);
+    } catch (error: any) {
+      logger.error("getting active program assignment", error);
+      res.status(500).json({
+        message: "Failed to get active program assignment"
+      });
     }
   });
 
@@ -1506,7 +1559,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         athleteId: req.currentUser.id,
         assignedBy: req.currentUser.id, // Self-assigned
         status: 'active',
-        assignedAt: new Date(),
+        startDate: new Date(),
       });
 
       res.json(assignment);
@@ -1580,6 +1633,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       logger.error("fetching workout session", error);
       res.status(500).json({ message: "Failed to fetch workout session" });
+    }
+  });
+
+  // Get today's workout session for current user
+  app.get('/api/workout-sessions/today', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const userId = req.currentUser!.id;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      logger.info('Fetching today\'s workout session', { userId, date: today.toISOString() });
+
+      // Find workout session for today using Drizzle
+      const sessions = await db
+        .select()
+        .from(workoutSessions)
+        .where(
+          and(
+            eq(workoutSessions.athleteId, userId),
+            gte(workoutSessions.scheduledDate, today),
+            lt(workoutSessions.scheduledDate, tomorrow)
+          )
+        )
+        .limit(1);
+
+      if (sessions.length > 0) {
+        // Session exists - fetch it with full details using storage helper
+        const session = await storage.getWorkoutSession(sessions[0].id);
+        logger.info('Workout session found', {
+          userId,
+          sessionId: session!.id,
+          status: session!.status,
+        });
+        return res.json(session);
+      }
+
+      // No session exists - check for scheduled workout from active program
+      logger.info('No workout session found, checking for scheduled workout', { userId });
+
+      const assignments = await storage.getAthleteAssignments(userId);
+      const activeAssignments = assignments.filter(a => a.status === 'active');
+
+      if (activeAssignments.length === 0) {
+        return res.status(404).json({
+          message: "No workout scheduled for today"
+        });
+      }
+
+      // Get the most recent active assignment
+      const assignment = activeAssignments.sort((a, b) => 
+        new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+      )[0];
+
+      // Fetch full program structure
+      const fullProgram = await storage.getProgramWeeks(assignment.programId);
+
+      // Calculate which day of the program we're on
+      const startDate = new Date(assignment.startDate);
+      startDate.setHours(0, 0, 0, 0);
+
+      const daysSinceStart = Math.floor(
+        (today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Find the appropriate program day
+      const totalDays = fullProgram.reduce((sum, week) => sum + week.days.length, 0);
+      const absoluteDayNumber = daysSinceStart % totalDays;
+      
+      let currentDayCount = 0;
+      let todaysProgramDay = null;
+
+      for (const week of fullProgram) {
+        for (const day of week.days) {
+          if (currentDayCount === absoluteDayNumber) {
+            todaysProgramDay = day;
+            break;
+          }
+          currentDayCount++;
+        }
+        if (todaysProgramDay) break;
+      }
+
+      if (!todaysProgramDay) {
+        return res.status(404).json({
+          message: "No workout scheduled for today"
+        });
+      }
+
+      logger.info('Scheduled workout found', {
+        userId,
+        programId: assignment.programId,
+        dayId: todaysProgramDay.id,
+        daysSinceStart,
+        absoluteDayNumber,
+      });
+
+      // Return scheduled workout info
+      res.json({
+        scheduled: true,
+        programDay: todaysProgramDay,
+        assignment: {
+          ...assignment,
+          program: {
+            ...assignment.program,
+            weeks: fullProgram
+          }
+        },
+        suggestedStartTime: new Date(),
+        message: "Workout scheduled but not started",
+      });
+    } catch (error: any) {
+      logger.error("getting today's workout session", error);
+      res.status(500).json({
+        message: "Failed to get today's workout"
+      });
     }
   });
 
@@ -1752,43 +1923,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       logger.error("fetching set logs", error);
       res.status(500).json({ message: "Failed to fetch set logs" });
-    }
-  });
-
-  // ============================================
-  // MESSAGING ROUTES
-  // ============================================
-  
-  app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
-    try {
-      const userId = req.currentUser!.id;
-      const data = insertMessageSchema.parse({ ...req.body, senderId: userId });
-      const message = await storage.createMessage(data);
-      res.json(message);
-    } catch (error) {
-      logger.error("creating message", error);
-      res.status(400).json({ message: "Failed to create message" });
-    }
-  });
-
-  app.get('/api/messages/conversation/:otherUserId', isAuthenticated, async (req: AuthRequest, res) => {
-    try {
-      const userId = req.currentUser!.id;
-      const messages = await storage.getConversation(userId, req.params.otherUserId);
-      res.json(messages);
-    } catch (error) {
-      logger.error("fetching conversation", error);
-      res.status(500).json({ message: "Failed to fetch conversation" });
-    }
-  });
-
-  app.patch('/api/messages/:id/read', isAuthenticated, async (req: AuthRequest, res) => {
-    try {
-      await storage.markMessageAsRead(req.params.id);
-      res.json({ success: true });
-    } catch (error) {
-      logger.error("marking message as read", error);
-      res.status(400).json({ message: "Failed to mark message as read" });
     }
   });
 

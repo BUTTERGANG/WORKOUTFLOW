@@ -109,14 +109,14 @@ export default function Messages() {
           </div>
 
           {/* Messages Container with Two-Column Layout */}
-          <div className="grid h-[calc(100vh-16rem)] grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid h-[500px] lg:h-[calc(100vh-16rem)] grid-cols-1 gap-4 lg:grid-cols-3">
             {/* User List */}
             <Card className="lg:col-span-1">
               <CardHeader>
                 <CardTitle className="text-lg">People</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-[calc(100vh-20rem)]">
+                <ScrollArea className="h-[400px] lg:h-[calc(100vh-20rem)]">
                   {membersLoading ? (
                     <div className="p-4 text-center text-muted-foreground">Loading...</div>
                   ) : otherUsers.length === 0 ? (
