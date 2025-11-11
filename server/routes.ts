@@ -38,6 +38,7 @@ import {
   organizationJoinRequests,
   workoutSessions,
   messages,
+  programDays,
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -1150,6 +1151,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       logger.error("fetching program exercises", error);
       res.status(500).json({ message: "Failed to fetch program exercises" });
+    }
+  });
+
+  app.patch('/api/program-days/:dayId', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const dayId = req.params.dayId;
+      const updateSchema = z.object({
+        name: z.string().min(1, "Day name is required").max(100, "Day name must be less than 100 characters"),
+      });
+
+      const { name } = updateSchema.parse(req.body);
+
+      // Get day to find week and program for authorization
+      const day = await storage.getProgramDay(dayId);
+      if (!day) {
+        return res.status(404).json({ message: "Day not found" });
+      }
+
+      const week = await storage.getProgramWeek(day.weekId);
+      if (!week) {
+        return res.status(404).json({ message: "Week not found" });
+      }
+
+      const program = await storage.getProgram(week.programId);
+      if (!program) {
+        return res.status(404).json({ message: "Program not found" });
+      }
+
+      const org = await storage.getOrganization(program.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Verify user is coach or org owner
+      const isOwner = org.ownerId === req.currentUser!.id;
+      const userIsCoach = isCoach(req.currentUser!);
+
+      if (!isOwner && !userIsCoach) {
+        return res.status(403).json({ message: "Forbidden: only coaches or org owners can modify programs" });
+      }
+
+      // Verify user has access to this organization
+      const hasAccess = await hasOrganizationAccess(req.currentUser!.id, program.organizationId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Forbidden: program not in your organization" });
+      }
+
+      // Update the day name
+      const updatedDay = await storage.updateProgramDay(dayId, { name });
+
+      if (!updatedDay) {
+        return res.status(404).json({ message: "Failed to update program day" });
+      }
+
+      res.json(updatedDay);
+    } catch (error: any) {
+      logger.error("updating program day", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({
+          message: "Validation error",
+          errors: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to update program day" });
     }
   });
 

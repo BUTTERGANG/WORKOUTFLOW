@@ -140,6 +140,22 @@ export default function Programs() {
     },
   });
 
+  const updateDayMutation = useMutation({
+    mutationFn: async ({ dayId, name }: { dayId: number; name: string }) =>
+      apiRequest(`/api/program-days/${dayId}`, { method: 'PATCH', body: { name } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/programs', currentOrganization?.id] });
+      toast({ title: "Success", description: "Day name updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Error", 
+        description: error.message || "Failed to update day name", 
+        variant: "destructive" 
+      });
+    },
+  });
+
   const handleCreateProgram = () => {
     if (!programName.trim() || !programDuration || !currentOrganization) return;
     createProgramMutation.mutate({
@@ -510,13 +526,21 @@ function ProgramBuilderDialog({
                                 <Button
                                   size="sm"
                                   onClick={() => {
-                                    // TODO: Implement update day API
-                                    toast({ title: "Update day feature coming soon" });
+                                    if (!editDayName.trim()) {
+                                      toast({ 
+                                        title: "Validation Error", 
+                                        description: "Day name cannot be empty",
+                                        variant: "destructive" 
+                                      });
+                                      return;
+                                    }
+                                    updateDayMutation.mutate({ dayId: day.id, name: editDayName.trim() });
                                     setEditingDayId(null);
                                   }}
                                   data-testid={`button-save-day-${day.id}`}
+                                  disabled={updateDayMutation.isPending}
                                 >
-                                  Save
+                                  {updateDayMutation.isPending ? "Saving..." : "Save"}
                                 </Button>
                                 <Button
                                   size="sm"
