@@ -301,8 +301,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       const member = await storage.addTeamMember(data);
       res.json(member);
-    } catch (error) {
+    } catch (error: any) {
       logger.error("adding team member", error);
+      if (error.code === '23505') {
+        return res.status(409).json({ message: "User is already a member of this team" });
+      }
       res.status(400).json({ message: "Failed to add team member" });
     }
   });
@@ -461,8 +464,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.approveJoinRequest(req.params.id, req.currentUser!.id);
       res.json({ success: true, message: "Join request approved" });
-    } catch (error) {
+    } catch (error: any) {
       logger.error("approving join request", error);
+      if (error.code === '23505') {
+        return res.status(409).json({ message: "User is already a member of this team" });
+      }
       res.status(500).json({ message: "Failed to approve join request" });
     }
   });
@@ -722,8 +728,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await storage.approveOrganizationJoinRequest(req.params.id, req.currentUser.id);
       res.json({ success: true, message: "Join request approved" });
-    } catch (error) {
+    } catch (error: any) {
       logger.error("approving organization join request", error);
+      if (error.code === '23505') {
+        return res.status(409).json({ message: "User is already a member of an organization team" });
+      }
       res.status(500).json({ message: "Failed to approve join request" });
     }
   });
