@@ -249,6 +249,15 @@ export class DatabaseStorage implements IStorage {
     return userTeamMemberships.map(row => row.team);
   }
 
+  async getUserOrganizationMemberships(userId: string): Promise<OrganizationMember[]> {
+    const memberships = await db
+      .select()
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, userId));
+    
+    return memberships;
+  }
+
   // ============================================
   // ORGANIZATION OPERATIONS
   // ============================================

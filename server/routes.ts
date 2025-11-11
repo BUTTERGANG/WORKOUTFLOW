@@ -2421,12 +2421,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = insertMessageSchema.parse({ ...req.body, senderId: req.currentUser.id });
       
-      // Verify sender and recipient are in the same organization
-      const senderTeams = await storage.getUserTeams(req.currentUser.id);
-      const recipientTeams = await storage.getUserTeams(data.recipientId);
+      // Verify sender and recipient are in the same organization (membership or ownership)
+      const senderMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
+      const senderOwnerships = await storage.getUserOrganizations(req.currentUser.id);
+      const recipientMemberships = await storage.getUserOrganizationMemberships(data.recipientId);
+      const recipientOwnerships = await storage.getUserOrganizations(data.recipientId);
       
-      const senderOrgIds = new Set(senderTeams.map(t => t.organizationId));
-      const recipientOrgIds = new Set(recipientTeams.map(t => t.organizationId));
+      const senderOrgIds = new Set([
+        ...senderMemberships.map(m => m.organizationId),
+        ...senderOwnerships.map(o => o.id)
+      ]);
+      const recipientOrgIds = new Set([
+        ...recipientMemberships.map(m => m.organizationId),
+        ...recipientOwnerships.map(o => o.id)
+      ]);
       
       const hasSharedOrg = [...senderOrgIds].some(orgId => recipientOrgIds.has(orgId));
       
@@ -2449,12 +2457,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      // Verify both users are in the same organization
-      const currentUserTeams = await storage.getUserTeams(req.currentUser.id);
-      const otherUserTeams = await storage.getUserTeams(req.params.userId);
+      // Verify both users are in the same organization (membership or ownership)
+      const currentUserMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
+      const currentUserOwnerships = await storage.getUserOrganizations(req.currentUser.id);
+      const otherUserMemberships = await storage.getUserOrganizationMemberships(req.params.userId);
+      const otherUserOwnerships = await storage.getUserOrganizations(req.params.userId);
       
-      const currentUserOrgIds = new Set(currentUserTeams.map(t => t.organizationId));
-      const otherUserOrgIds = new Set(otherUserTeams.map(t => t.organizationId));
+      const currentUserOrgIds = new Set([
+        ...currentUserMemberships.map(m => m.organizationId),
+        ...currentUserOwnerships.map(o => o.id)
+      ]);
+      const otherUserOrgIds = new Set([
+        ...otherUserMemberships.map(m => m.organizationId),
+        ...otherUserOwnerships.map(o => o.id)
+      ]);
       
       const hasSharedOrg = [...currentUserOrgIds].some(orgId => otherUserOrgIds.has(orgId));
       
