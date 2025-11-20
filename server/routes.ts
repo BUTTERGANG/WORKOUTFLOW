@@ -390,7 +390,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // TEAM JOIN REQUEST ROUTES
   // ============================================
 
-  // Search for teams
+  // Search for teams (only within user's organizations)
   app.get('/api/teams/search', rateLimit(20, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
@@ -402,7 +402,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Search term must be at least 2 characters" });
       }
 
-      const teams = await storage.searchTeams(searchTerm);
+      // Only return teams from organizations where the user is a member
+      const teams = await storage.searchTeams(searchTerm, req.currentUser.id);
       res.json(teams);
     } catch (error) {
       logger.error("searching teams", error);

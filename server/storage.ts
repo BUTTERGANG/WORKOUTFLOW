@@ -109,7 +109,7 @@ export interface IStorage {
   getOrganizationTeamsWithMembers(organizationId: string): Promise<(Team & { members: (TeamMember & { user: User })[] })[]>;
   addTeamMember(member: InsertTeamMember): Promise<TeamMember>;
   getTeamMembers(teamId: string): Promise<(TeamMember & { user: User })[]>;
-  searchTeams(searchTerm: string): Promise<(Team & { organization: Organization })[]>;
+  searchTeams(searchTerm: string, userId: string): Promise<(Team & { organization: Organization })[]>;
   
   // Team join request operations
   createTeamJoinRequest(request: InsertTeamJoinRequest): Promise<TeamJoinRequest>;
@@ -569,7 +569,8 @@ export class DatabaseStorage implements IStorage {
     return members;
   }
 
-  async searchTeams(searchTerm: string): Promise<(Team & { organization: Organization })[]> {
+  async searchTeams(searchTerm: string, userId: string): Promise<(Team & { organization: Organization })[]> {
+    // Only return teams from organizations where the user is a member
     const results = await db
       .select({
         id: teams.id,
@@ -582,7 +583,13 @@ export class DatabaseStorage implements IStorage {
       })
       .from(teams)
       .innerJoin(organizations, eq(teams.organizationId, organizations.id))
-      .where(ilike(teams.name, `%${searchTerm}%`));
+      .innerJoin(organizationMembers, eq(organizationMembers.organizationId, organizations.id))
+      .where(
+        and(
+          ilike(teams.name, `%${searchTerm}%`),
+          eq(organizationMembers.userId, userId)
+        )
+      );
     return results;
   }
 
