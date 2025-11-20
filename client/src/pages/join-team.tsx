@@ -11,12 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Search, Users, Building2, CheckCircle, Clock, XCircle, Loader2 } from "lucide-react";
-
-type Organization = {
-  id: string;
-  name: string;
-  description: string | null;
-};
+import type { Organization } from "@shared/schema";
 
 type OrganizationJoinRequest = {
   id: string;
