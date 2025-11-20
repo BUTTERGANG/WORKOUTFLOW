@@ -385,6 +385,7 @@ export class DatabaseStorage implements IStorage {
         organizationId: organizationMembers.organizationId,
         userId: organizationMembers.userId,
         role: organizationMembers.role,
+        canManageAthletes: organizationMembers.canManageAthletes,
         joinedAt: organizationMembers.joinedAt,
         user: users,
       })

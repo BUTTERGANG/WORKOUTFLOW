@@ -36,6 +36,7 @@ import {
   programAssignments,
   teamJoinRequests,
   organizationJoinRequests,
+  organizationMembers,
   workoutSessions,
   messages,
   programDays,
@@ -288,6 +289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           organizationId: org.id,
           userId: owner.id,
           role: 'admin' as const,
+          canManageAthletes: true, // Owners always have full permissions
           joinedAt: org.createdAt,
           user: owner
         });
@@ -297,6 +299,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       logger.error("fetching organization members", error);
       res.status(500).json({ message: "Failed to fetch organization members" });
+    }
+  });
+
+  // Update organization member permissions (owner only)
+  app.patch('/api/organization-members/:memberId/permissions', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const { memberId } = req.params;
+      const { canManageAthletes } = req.body;
+
+      if (typeof canManageAthletes !== 'boolean') {
+        return res.status(400).json({ message: "canManageAthletes must be a boolean" });
+      }
+
+      // Get the organization member to find the organization
+      const member = await db
+        .select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.id, memberId))
+        .limit(1);
+
+      if (!member[0]) {
+        return res.status(404).json({ message: "Organization member not found" });
+      }
+
+      // Get organization to verify ownership
+      const org = await storage.getOrganization(member[0].organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Only organization owner can grant/revoke permissions
+      if (org.ownerId !== req.currentUser!.id) {
+        return res.status(403).json({
+          message: "Forbidden: Only organization owners can manage member permissions"
+        });
+      }
+
+      // Update the permission
+      await db
+        .update(organizationMembers)
+        .set({ canManageAthletes })
+        .where(eq(organizationMembers.id, memberId));
+
+      logger.info('Organization member permissions updated', {
+        memberId,
+        canManageAthletes,
+        updatedBy: req.currentUser!.id,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      logger.error("updating organization member permissions", error);
+      res.status(500).json({ message: "Failed to update permissions" });
     }
   });
 
@@ -383,6 +438,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       logger.error("fetching team members", error);
       res.status(500).json({ message: "Failed to fetch team members" });
+    }
+  });
+
+  // Remove athlete from team (requires owner permission or canManageAthletes)
+  app.delete('/api/teams/:teamId/members/:userId', isAuthenticated, verifyTeamAccess, async (req: AuthRequest, res) => {
+    try {
+      const { teamId, userId } = req.params;
+
+      // Get team to find organization
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      // Get organization to check owner
+      const org = await storage.getOrganization(team.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser!.id;
+
+      // If not owner, check if user has canManageAthletes permission
+      if (!isOwner) {
+        const membership = await db
+          .select()
+          .from(organizationMembers)
+          .where(and(
+            eq(organizationMembers.organizationId, team.organizationId),
+            eq(organizationMembers.userId, req.currentUser!.id)
+          ))
+          .limit(1);
+
+        if (!membership[0] || !membership[0].canManageAthletes) {
+          return res.status(403).json({
+            message: "Forbidden: Only organization owners or coaches with athlete management permission can remove athletes"
+          });
+        }
+      }
+
+      // Verify the user being removed is actually an athlete
+      const targetUser = await storage.getUserById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.role !== 'athlete') {
+        return res.status(400).json({ message: "Can only remove athletes from teams" });
+      }
+
+      // Remove the athlete from the team
+      await storage.removeTeamMember(teamId, userId);
+
+      logger.info('Athlete removed from team', {
+        teamId,
+        userId,
+        removedBy: req.currentUser!.id,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      logger.error("removing team member", error);
+      res.status(500).json({ message: "Failed to remove team member" });
     }
   });
 

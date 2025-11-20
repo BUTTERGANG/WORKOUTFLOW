@@ -85,6 +85,7 @@ export const organizationMembers = pgTable("organization_members", {
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   role: userRoleEnum("role").notNull(),
+  canManageAthletes: boolean("can_manage_athletes").notNull().default(false), // Permission to remove/manage athletes
   joinedAt: timestamp("joined_at").defaultNow(),
 }, (table) => [
   index("idx_organization_members_organization_id").on(table.organizationId),
