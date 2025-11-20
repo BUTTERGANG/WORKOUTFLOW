@@ -16,6 +16,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -295,7 +305,7 @@ export default function Programs() {
                 Create Program
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
+            <DialogContent className="max-h-[85vh] sm:max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle className="text-xl">Create New Program</DialogTitle>
                 <DialogDescription className="text-base">
@@ -468,7 +478,7 @@ function ProgramBuilderDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="px-6 pt-6">
           <DialogTitle className="text-2xl">{program.name}</DialogTitle>
           <DialogDescription className="text-base">
@@ -687,6 +697,7 @@ function AddExerciseDialog({
   const [notes, setNotes] = useState("");
   const [open, setOpen] = useState(false);
   const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [exerciseToDelete, setExerciseToDelete] = useState<{id: string; name: string} | null>(null);
 
   const updateExerciseMutation = useMutation({
     mutationFn: async (data: { id: string; sets?: number; reps?: string; intensity?: string; notes?: string }) => {
@@ -765,8 +776,9 @@ function AddExerciseDialog({
   const editingExercise = day.exercises?.find(ex => ex.id === editingExerciseId);
 
   return (
+    <>
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[85vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{day.name}</DialogTitle>
           <DialogDescription>Add exercises to this workout day</DialogDescription>
@@ -875,11 +887,7 @@ function AddExerciseDialog({
                                 size="icon"
                                 variant="ghost"
                                 className="h-11 w-11 sm:h-8 sm:w-8 text-destructive hover:text-destructive"
-                                onClick={() => {
-                                  if (confirm(`Delete "${ex.exercise.name}"?`)) {
-                                    deleteExerciseMutation.mutate(ex.id);
-                                  }
-                                }}
+                                onClick={() => setExerciseToDelete({id: ex.id, name: ex.exercise.name})}
                                 data-testid={`button-delete-exercise-${ex.id}`}
                                 aria-label={`Delete ${ex.exercise.name}`}
                               >
@@ -1013,6 +1021,33 @@ function AddExerciseDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Delete Exercise Confirmation Dialog */}
+    <AlertDialog open={!!exerciseToDelete} onOpenChange={() => setExerciseToDelete(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete Exercise</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete "{exerciseToDelete?.name}"? This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (exerciseToDelete) {
+                deleteExerciseMutation.mutate(exerciseToDelete.id);
+                setExerciseToDelete(null);
+              }
+            }}
+            className="bg-destructive hover:bg-destructive/90"
+          >
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 
@@ -1185,7 +1220,7 @@ function AssignAthleteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
+      <DialogContent className="max-h-[85vh] sm:max-h-[90vh] overflow-y-auto sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Manage Program Assignments</DialogTitle>
           <DialogDescription>

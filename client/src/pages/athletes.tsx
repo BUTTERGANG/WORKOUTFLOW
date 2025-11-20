@@ -227,7 +227,7 @@ export default function Athletes() {
 
   if (!isCoach) {
     return (
-      <div className="flex h-screen items-center justify-center p-4">
+      <div className="flex min-h-screen items-center justify-center p-4">
         <Card className="w-full max-w-md">
           <CardHeader>
             <CardTitle>Access Denied</CardTitle>
@@ -367,7 +367,10 @@ export default function Athletes() {
                   >
                     <div className="flex items-start gap-3">
                       <Avatar className="h-10 w-10">
-                        <AvatarImage src={request.user.profileImageUrl || undefined} />
+                        <AvatarImage
+                          src={request.user.profileImageUrl || undefined}
+                          alt={`${request.user.firstName} ${request.user.lastName}`}
+                        />
                         <AvatarFallback>
                           {request.user.firstName?.[0]}{request.user.lastName?.[0]}
                         </AvatarFallback>
@@ -440,7 +443,10 @@ export default function Athletes() {
                   <CardHeader>
                     <div className="flex items-start gap-4">
                       <Avatar className="h-12 w-12">
-                        <AvatarImage src={member.user.profileImageUrl || undefined} />
+                        <AvatarImage
+                          src={member.user.profileImageUrl || undefined}
+                          alt={`${member.user.firstName} ${member.user.lastName}`}
+                        />
                         <AvatarFallback>
                           {member.user.firstName?.[0]}{member.user.lastName?.[0]}
                         </AvatarFallback>
