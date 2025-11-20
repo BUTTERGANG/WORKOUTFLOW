@@ -2,7 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq, and, gte, lt } from "drizzle-orm";
+import { eq, and, gte, lt, isNull } from "drizzle-orm";
 import passport from "passport";
 import { setupLocalAuth, isAuthenticated, hashPassword } from "./localAuth";
 import { logger } from "./logger";
@@ -1751,7 +1751,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           and(
             eq(workoutSessions.athleteId, userId),
             gte(workoutSessions.scheduledDate, today),
-            lt(workoutSessions.scheduledDate, tomorrow)
+            lt(workoutSessions.scheduledDate, tomorrow),
+            isNull(workoutSessions.deletedAt)
           )
         )
         .limit(1);
@@ -2626,7 +2627,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = await db
         .select()
         .from(messages)
-        .where(eq(messages.id, req.params.id))
+        .where(and(
+          eq(messages.id, req.params.id),
+          isNull(messages.deletedAt)
+        ))
         .limit(1);
 
       if (!message[0]) {

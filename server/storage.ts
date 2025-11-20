@@ -52,7 +52,7 @@ import {
   type InsertMessage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, inArray, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, inArray, isNull, type SQL } from "drizzle-orm";
 import { ConflictError, ValidationError } from "./errors";
 
 // Generate a random 8-character alphanumeric invite code
@@ -502,7 +502,10 @@ export class DatabaseStorage implements IStorage {
     const [team] = await db
       .select()
       .from(teams)
-      .where(eq(teams.id, id));
+      .where(and(
+        eq(teams.id, id),
+        isNull(teams.deletedAt)
+      ));
     return team;
   }
 
@@ -510,7 +513,10 @@ export class DatabaseStorage implements IStorage {
     const teamList = await db
       .select()
       .from(teams)
-      .where(eq(teams.organizationId, organizationId));
+      .where(and(
+        eq(teams.organizationId, organizationId),
+        isNull(teams.deletedAt)
+      ));
     return teamList;
   }
 
@@ -527,7 +533,10 @@ export class DatabaseStorage implements IStorage {
         eq(teamMembers.role, 'athlete')
       ))
       .leftJoin(users, eq(teamMembers.userId, users.id))
-      .where(eq(teams.organizationId, organizationId))
+      .where(and(
+        eq(teams.organizationId, organizationId),
+        isNull(teams.deletedAt)
+      ))
       .orderBy(teams.name, users.lastName, users.firstName);
 
     const teamsMap = new Map<string, Team & { members: (TeamMember & { user: User })[] }>();
@@ -577,6 +586,7 @@ export class DatabaseStorage implements IStorage {
 
   async searchTeams(searchTerm: string, userId: string): Promise<(Team & { organization: Organization })[]> {
     // Only return teams from organizations where the user is a member
+    // Filter out soft-deleted teams
     const results = await db
       .select({
         id: teams.id,
@@ -594,7 +604,8 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           ilike(teams.name, `%${searchTerm}%`),
-          eq(organizationMembers.userId, userId)
+          eq(organizationMembers.userId, userId),
+          isNull(teams.deletedAt)
         )
       );
     return results;
@@ -897,7 +908,10 @@ export class DatabaseStorage implements IStorage {
     const [program] = await db
       .select()
       .from(programs)
-      .where(eq(programs.id, id));
+      .where(and(
+        eq(programs.id, id),
+        isNull(programs.deletedAt)
+      ));
     return program;
   }
 
@@ -905,7 +919,10 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(programs)
-      .where(eq(programs.organizationId, organizationId))
+      .where(and(
+        eq(programs.organizationId, organizationId),
+        isNull(programs.deletedAt)
+      ))
       .orderBy(desc(programs.createdAt));
   }
 
@@ -1180,7 +1197,10 @@ export class DatabaseStorage implements IStorage {
     const [session] = await db
       .select()
       .from(workoutSessions)
-      .where(eq(workoutSessions.id, id));
+      .where(and(
+        eq(workoutSessions.id, id),
+        isNull(workoutSessions.deletedAt)
+      ));
     return session;
   }
 
@@ -1188,7 +1208,10 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(workoutSessions)
-      .where(eq(workoutSessions.athleteId, athleteId))
+      .where(and(
+        eq(workoutSessions.athleteId, athleteId),
+        isNull(workoutSessions.deletedAt)
+      ))
       .orderBy(desc(workoutSessions.scheduledDate));
   }
 
@@ -1261,7 +1284,10 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(messages)
       .where(
-        sql`(${messages.senderId} = ${userId1} AND ${messages.recipientId} = ${userId2}) OR (${messages.senderId} = ${userId2} AND ${messages.recipientId} = ${userId1})`
+        and(
+          sql`(${messages.senderId} = ${userId1} AND ${messages.recipientId} = ${userId2}) OR (${messages.senderId} = ${userId2} AND ${messages.recipientId} = ${userId1})`,
+          isNull(messages.deletedAt)
+        )
       )
       .orderBy(messages.createdAt);
   }
@@ -1667,7 +1693,10 @@ export class DatabaseStorage implements IStorage {
     const programCount = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(programs)
-      .where(eq(programs.organizationId, organizationId));
+      .where(and(
+        eq(programs.organizationId, organizationId),
+        isNull(programs.deletedAt)
+      ));
 
     // Use COUNT(DISTINCT) to avoid double-counting athletes in multiple teams
     const athleteCount = await db
@@ -1678,7 +1707,8 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(teams.organizationId, organizationId),
-          eq(users.role, 'athlete')
+          eq(users.role, 'athlete'),
+          isNull(teams.deletedAt)
         )
       );
 
@@ -1695,7 +1725,9 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(teams.organizationId, organizationId),
-          sql`${workoutSessions.startedAt} >= ${sevenDaysAgo}`
+          sql`${workoutSessions.startedAt} >= ${sevenDaysAgo}`,
+          isNull(teams.deletedAt),
+          isNull(workoutSessions.deletedAt)
         )
       );
 
@@ -1719,7 +1751,9 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(teams.organizationId, organizationId),
-              sql`${setLogs.timestamp} >= ${sevenDaysAgo}`
+              sql`${setLogs.timestamp} >= ${sevenDaysAgo}`,
+              isNull(teams.deletedAt),
+              isNull(workoutSessions.deletedAt)
             )
           )
           .as('distinct_reps')
