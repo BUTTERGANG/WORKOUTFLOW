@@ -96,16 +96,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: data.role,
       });
 
-      // Log the user in automatically
-      req.login(user, (err) => {
+      // Regenerate session to prevent session fixation attacks
+      req.session.regenerate((err) => {
         if (err) {
-          logger.error("logging in user after registration", err);
+          logger.error("Session regeneration failed after registration", err);
           return res.status(500).json({ message: "Registration successful but login failed" });
         }
-        
-        // Remove password hash before sending to client
-        const { passwordHash: _, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+
+        // Log the user in automatically
+        req.login(user, (err) => {
+          if (err) {
+            logger.error("logging in user after registration", err);
+            return res.status(500).json({ message: "Registration successful but login failed" });
+          }
+
+          // Remove password hash before sending to client
+          const { passwordHash: _, ...userWithoutPassword } = user;
+          res.json(userWithoutPassword);
+        });
       });
     } catch (error: any) {
       logger.error("registering user", error);
@@ -126,19 +134,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(401).json({ message: info?.message || "Invalid credentials" });
       }
-      req.login(user, (err) => {
+
+      // Regenerate session to prevent session fixation attacks
+      req.session.regenerate((err) => {
         if (err) {
+          logger.error("Session regeneration failed", err);
           return res.status(500).json({ message: "Login failed" });
         }
-        // Remove password hash before sending to client
-        const { passwordHash, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+
+        req.login(user, (err) => {
+          if (err) {
+            return res.status(500).json({ message: "Login failed" });
+          }
+          // Remove password hash before sending to client
+          const { passwordHash, ...userWithoutPassword } = user;
+          res.json(userWithoutPassword);
+        });
       });
     })(req, res, next);
   });
 
   // Logout
-  app.post('/api/auth/logout', (req, res) => {
+  app.post('/api/auth/logout', isAuthenticated, (req, res) => {
     req.logout((err) => {
       if (err) {
         return res.status(500).json({ message: "Logout failed" });
@@ -157,8 +174,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // ORGANIZATION ROUTES
   // ============================================
-  
-  app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
+
+
+  app.post('/api/organizations', rateLimit(10, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
       logger.info("Creating organization", { userId });
@@ -285,8 +303,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // TEAM ROUTES
   // ============================================
-  
-  app.post('/api/teams', isAuthenticated, async (req: AuthRequest, res) => {
+
+  app.post('/api/teams', rateLimit(10, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -373,7 +391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
 
   // Search for teams
-  app.get('/api/teams/search', isAuthenticated, async (req: AuthRequest, res) => {
+  app.get('/api/teams/search', rateLimit(20, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -393,7 +411,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a join request
-  app.post('/api/team-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/team-join-requests', rateLimit(5, 5 * 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -600,7 +618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
 
   // Search for organizations
-  app.post('/api/organizations/search', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/organizations/search', rateLimit(20, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const { searchTerm } = req.body;
       if (!searchTerm || typeof searchTerm !== 'string') {
@@ -616,7 +634,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get organization by invite code
-  app.get('/api/organizations/by-invite/:inviteCode', isAuthenticated, async (req: AuthRequest, res) => {
+  app.get('/api/organizations/by-invite/:inviteCode', rateLimit(3, 15 * 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const org = await storage.getOrganizationByInviteCode(req.params.inviteCode);
       if (!org) {
@@ -668,7 +686,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create an organization join request
-  app.post('/api/organization-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/organization-join-requests', rateLimit(5, 5 * 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -832,8 +850,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // EXERCISE ROUTES
   // ============================================
-  
-  app.post('/api/exercises', isAuthenticated, async (req: AuthRequest, res) => {
+
+  app.post('/api/exercises', rateLimit(30, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -901,8 +919,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // PROGRAM ROUTES
   // ============================================
-  
-  app.post('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
+
+
+  app.post('/api/programs', rateLimit(10, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
       const data = insertProgramSchema.parse({ ...req.body, createdBy: userId });
@@ -1711,47 +1730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/workout-sessions/:id', isAuthenticated, async (req: AuthRequest, res) => {
-    try {
-      if (!req.currentUser) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const session = await storage.getWorkoutSession(req.params.id);
-      if (!session) {
-        return res.status(404).json({ message: "Workout session not found" });
-      }
-
-      // Users can only view their own sessions unless they're a coach
-      if (session.athleteId !== req.currentUser!.id) {
-        const isCoach = req.currentUser!.role === 'admin' || 
-                       req.currentUser!.role === 'head_coach' || 
-                       req.currentUser!.role === 'assistant_coach';
-        
-        if (!isCoach) {
-          return res.status(403).json({ message: "Forbidden: can only view your own workout sessions" });
-        }
-
-        // Verify coach has access to athlete's organization
-        const athleteTeams = await storage.getUserTeams(session.athleteId);
-        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
-        const coachOrgIds = coachOrgs.map(org => org.id);
-        const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
-        
-        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
-        if (!hasSharedOrg) {
-          return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
-        }
-      }
-
-      res.json(session);
-    } catch (error) {
-      logger.error("fetching workout session", error);
-      res.status(500).json({ message: "Failed to fetch workout session" });
-    }
-  });
-
-  // Get today's workout session for current user
+  // Get today's workout session for current user (MUST come before /:id route)
   app.get('/api/workout-sessions/today', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
@@ -1800,7 +1779,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get the most recent active assignment
-      const assignment = activeAssignments.sort((a, b) => 
+      const assignment = activeAssignments.sort((a, b) =>
         new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
       )[0];
 
@@ -1818,7 +1797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Find the appropriate program day
       const totalDays = fullProgram.reduce((sum, week) => sum + week.days.length, 0);
       const absoluteDayNumber = daysSinceStart % totalDays;
-      
+
       let currentDayCount = 0;
       let todaysProgramDay = null;
 
@@ -1866,6 +1845,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({
         message: "Failed to get today's workout"
       });
+    }
+  });
+
+  app.get('/api/workout-sessions/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const session = await storage.getWorkoutSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ message: "Workout session not found" });
+      }
+
+      // Users can only view their own sessions unless they're a coach
+      if (session.athleteId !== req.currentUser!.id) {
+        const isCoach = req.currentUser!.role === 'admin' ||
+                       req.currentUser!.role === 'head_coach' ||
+                       req.currentUser!.role === 'assistant_coach';
+
+        if (!isCoach) {
+          return res.status(403).json({ message: "Forbidden: can only view your own workout sessions" });
+        }
+
+        // Verify coach has access to athlete's organization
+        const athleteTeams = await storage.getUserTeams(session.athleteId);
+        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
+        const coachOrgIds = coachOrgs.map(org => org.id);
+        const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
+
+        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
+        if (!hasSharedOrg) {
+          return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
+        }
+      }
+
+      res.json(session);
+    } catch (error) {
+      logger.error("fetching workout session", error);
+      res.status(500).json({ message: "Failed to fetch workout session" });
     }
   });
 
@@ -2461,7 +2480,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
 
   // Send a message
-  app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/messages', rateLimit(30, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });

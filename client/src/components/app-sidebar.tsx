@@ -34,6 +34,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
+import { apiRequest } from "@/lib/queryClient";
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -183,12 +184,12 @@ export function AppSidebar() {
                 </a>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                className="text-destructive cursor-pointer" 
+              <DropdownMenuItem
+                className="text-destructive cursor-pointer"
                 data-testid="link-logout"
                 onClick={async () => {
                   try {
-                    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                    await apiRequest('/api/auth/logout', { method: 'POST' });
                     window.location.href = '/';
                   } catch (error) {
                     console.error('Logout failed:', error);

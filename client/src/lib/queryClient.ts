@@ -1,10 +1,57 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+// CSRF token cache
+let csrfToken: string | null = null;
+let csrfTokenPromise: Promise<string> | null = null;
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
     throw new Error(`${res.status}: ${text}`);
   }
+}
+
+/**
+ * Fetches CSRF token from the server
+ * Uses caching to avoid multiple requests
+ */
+export async function getCsrfToken(): Promise<string> {
+  // Return cached token if available
+  if (csrfToken) {
+    return csrfToken;
+  }
+
+  // If a fetch is already in progress, wait for it
+  if (csrfTokenPromise) {
+    return csrfTokenPromise;
+  }
+
+  // Start fetching the token
+  csrfTokenPromise = (async () => {
+    try {
+      const res = await fetch('/api/csrf-token', { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error('Failed to fetch CSRF token');
+      }
+      const data = await res.json();
+      csrfToken = data.csrfToken;
+      return csrfToken!;
+    } catch (error) {
+      csrfTokenPromise = null; // Reset promise on error
+      throw error;
+    }
+  })();
+
+  return csrfTokenPromise;
+}
+
+/**
+ * Clears the cached CSRF token
+ * Call this on 403 errors to force token refresh
+ */
+export function clearCsrfToken() {
+  csrfToken = null;
+  csrfTokenPromise = null;
 }
 
 export async function apiRequest<T = any>(
@@ -15,15 +62,33 @@ export async function apiRequest<T = any>(
   },
 ): Promise<T> {
   const method = options?.method || 'GET';
+  const headers: HeadersInit = options?.body ? { "Content-Type": "application/json" } : {};
+
+  // Add CSRF token for mutation requests
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+    try {
+      const token = await getCsrfToken();
+      headers['x-csrf-token'] = token;
+    } catch (error) {
+      console.error('Failed to get CSRF token:', error);
+      // Continue without token - server will reject the request
+    }
+  }
+
   const res = await fetch(url, {
     method,
-    headers: options?.body ? { "Content-Type": "application/json" } : {},
+    headers,
     body: options?.body ? JSON.stringify(options.body) : undefined,
     credentials: "include",
   });
 
+  // If we get 403, it might be a stale CSRF token - clear cache
+  if (res.status === 403) {
+    clearCsrfToken();
+  }
+
   await throwIfResNotOk(res);
-  
+
   try {
     return await res.json();
   } catch (error) {
