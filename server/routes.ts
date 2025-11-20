@@ -2488,30 +2488,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const data = insertMessageSchema.parse({ ...req.body, senderId: req.currentUser.id });
-      
-      // Verify sender and recipient are in the same organization (membership or ownership)
-      const senderMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
-      const senderOwnerships = await storage.getUserOrganizations(req.currentUser.id);
-      const recipientMemberships = await storage.getUserOrganizationMemberships(data.recipientId);
-      const recipientOwnerships = await storage.getUserOrganizations(data.recipientId);
-      
-      const senderOrgIds = new Set([
-        ...senderMemberships.map(m => m.organizationId),
-        ...senderOwnerships.map(o => o.id)
-      ]);
-      const recipientOrgIds = new Set([
-        ...recipientMemberships.map(m => m.organizationId),
-        ...recipientOwnerships.map(o => o.id)
-      ]);
-      
-      const hasSharedOrg = [...senderOrgIds].some(orgId => recipientOrgIds.has(orgId));
-      
-      if (!hasSharedOrg) {
-        return res.status(403).json({ message: "Forbidden: can only message users in same organization" });
+
+      // Team-based messaging permissions:
+      // 1. Users who share a team can message each other
+      // 2. Coaches in the same org can message each other (cross-team)
+
+      const senderTeams = await storage.getUserTeams(req.currentUser.id);
+      const recipientTeams = await storage.getUserTeams(data.recipientId);
+
+      // Check if they share any team
+      const sharedTeams = senderTeams.filter(st =>
+        recipientTeams.some(rt => rt.id === st.id)
+      );
+
+      if (sharedTeams.length > 0) {
+        // Same team = allowed
+        const message = await storage.createMessage(data);
+        return res.json(message);
       }
 
-      const message = await storage.createMessage(data);
-      res.json(message);
+      // If no shared team, check if both are coaches in same org
+      const sender = await storage.getUserById(req.currentUser.id);
+      const recipient = await storage.getUserById(data.recipientId);
+
+      if (!sender || !recipient) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isCoach = (role: string) => ['admin', 'head_coach', 'assistant_coach'].includes(role);
+
+      if (isCoach(sender.role) && isCoach(recipient.role)) {
+        // Check if same org (via membership or ownership)
+        const senderMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
+        const senderOwnerships = await storage.getUserOrganizations(req.currentUser.id);
+        const recipientMemberships = await storage.getUserOrganizationMemberships(data.recipientId);
+        const recipientOwnerships = await storage.getUserOrganizations(data.recipientId);
+
+        const senderOrgIds = new Set([
+          ...senderMemberships.map(m => m.organizationId),
+          ...senderOwnerships.map(o => o.id)
+        ]);
+        const recipientOrgIds = new Set([
+          ...recipientMemberships.map(m => m.organizationId),
+          ...recipientOwnerships.map(o => o.id)
+        ]);
+
+        const hasSharedOrg = [...senderOrgIds].some(orgId => recipientOrgIds.has(orgId));
+
+        if (hasSharedOrg) {
+          const message = await storage.createMessage(data);
+          return res.json(message);
+        }
+      }
+
+      return res.status(403).json({
+        message: "Forbidden: can only message users on the same team, or coaches in the same organization"
+      });
     } catch (error) {
       logger.error("creating message", error);
       res.status(400).json({ message: "Failed to create message" });
@@ -2525,29 +2557,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      // Verify both users are in the same organization (membership or ownership)
-      const currentUserMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
-      const currentUserOwnerships = await storage.getUserOrganizations(req.currentUser.id);
-      const otherUserMemberships = await storage.getUserOrganizationMemberships(req.params.userId);
-      const otherUserOwnerships = await storage.getUserOrganizations(req.params.userId);
-      
-      const currentUserOrgIds = new Set([
-        ...currentUserMemberships.map(m => m.organizationId),
-        ...currentUserOwnerships.map(o => o.id)
-      ]);
-      const otherUserOrgIds = new Set([
-        ...otherUserMemberships.map(m => m.organizationId),
-        ...otherUserOwnerships.map(o => o.id)
-      ]);
-      
-      const hasSharedOrg = [...currentUserOrgIds].some(orgId => otherUserOrgIds.has(orgId));
-      
-      if (!hasSharedOrg) {
-        return res.status(403).json({ message: "Forbidden: can only view messages with users in same organization" });
+      // Team-based messaging permissions (same as POST /api/messages)
+      const currentUserTeams = await storage.getUserTeams(req.currentUser.id);
+      const otherUserTeams = await storage.getUserTeams(req.params.userId);
+
+      // Check if they share any team
+      const sharedTeams = currentUserTeams.filter(ct =>
+        otherUserTeams.some(ot => ot.id === ct.id)
+      );
+
+      if (sharedTeams.length > 0) {
+        // Same team = allowed
+        const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
+        return res.json(messages);
       }
 
-      const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
-      res.json(messages);
+      // If no shared team, check if both are coaches in same org
+      const currentUser = await storage.getUserById(req.currentUser.id);
+      const otherUser = await storage.getUserById(req.params.userId);
+
+      if (!currentUser || !otherUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isCoach = (role: string) => ['admin', 'head_coach', 'assistant_coach'].includes(role);
+
+      if (isCoach(currentUser.role) && isCoach(otherUser.role)) {
+        // Check if same org (via membership or ownership)
+        const currentUserMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
+        const currentUserOwnerships = await storage.getUserOrganizations(req.currentUser.id);
+        const otherUserMemberships = await storage.getUserOrganizationMemberships(req.params.userId);
+        const otherUserOwnerships = await storage.getUserOrganizations(req.params.userId);
+
+        const currentUserOrgIds = new Set([
+          ...currentUserMemberships.map(m => m.organizationId),
+          ...currentUserOwnerships.map(o => o.id)
+        ]);
+        const otherUserOrgIds = new Set([
+          ...otherUserMemberships.map(m => m.organizationId),
+          ...otherUserOwnerships.map(o => o.id)
+        ]);
+
+        const hasSharedOrg = [...currentUserOrgIds].some(orgId => otherUserOrgIds.has(orgId));
+
+        if (hasSharedOrg) {
+          const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
+          return res.json(messages);
+        }
+      }
+
+      return res.status(403).json({
+        message: "Forbidden: can only view messages with users on the same team, or coaches in the same organization"
+      });
     } catch (error) {
       logger.error("fetching conversation", error);
       res.status(500).json({ message: "Failed to fetch conversation" });

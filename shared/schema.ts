@@ -50,9 +50,14 @@ export const users = pgTable("users", {
   lastName: varchar("last_name").notNull(),
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").notNull().default('athlete'),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  emailVerificationToken: varchar("email_verification_token"),
+  emailVerificationExpires: timestamp("email_verification_expires"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_users_email_verification_token").on(table.emailVerificationToken),
+]);
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -109,10 +114,12 @@ export const teams = pgTable("teams", {
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  deletedAt: timestamp("deleted_at"), // Soft delete - null = not deleted
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_teams_organization_id").on(table.organizationId),
+  index("idx_teams_deleted_at").on(table.deletedAt),
 ]);
 
 // Junction table for team members (coaches and athletes)
@@ -179,12 +186,14 @@ export const programs = pgTable("programs", {
   createdBy: varchar("created_by").notNull().references(() => users.id, { onDelete: 'cascade' }),
   organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   isTemplate: boolean("is_template").default(false),
+  deletedAt: timestamp("deleted_at"), // Soft delete - null = not deleted
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("idx_programs_organization_id").on(table.organizationId),
   index("idx_programs_created_by").on(table.createdBy),
   index("idx_programs_created_at").on(table.createdAt),
+  index("idx_programs_deleted_at").on(table.deletedAt),
 ]);
 
 export const programWeeks = pgTable("program_weeks", {
@@ -253,12 +262,14 @@ export const workoutSessions = pgTable("workout_sessions", {
   durationMinutes: integer("duration_minutes"),
   overallRpe: integer("overall_rpe"), // 1-10 scale
   notes: text("notes"),
+  deletedAt: timestamp("deleted_at"), // Soft delete - null = not deleted
 }, (table) => [
   // Composite index covers both athlete-only and athlete+date queries
   index("idx_workout_sessions_athlete_started").on(table.athleteId, table.startedAt),
   index("idx_workout_sessions_program_day_id").on(table.programDayId),
   index("idx_workout_sessions_scheduled_date").on(table.scheduledDate),
   index("idx_workout_sessions_completed_at").on(table.completedAt),
+  index("idx_workout_sessions_deleted_at").on(table.deletedAt),
 ]);
 
 export const exerciseLogs = pgTable("exercise_logs", {
@@ -298,11 +309,13 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   readAt: timestamp("read_at"),
+  deletedAt: timestamp("deleted_at"), // Soft delete - null = not deleted
 }, (table) => [
   index("idx_messages_sender_id").on(table.senderId),
   index("idx_messages_recipient_id").on(table.recipientId),
   index("idx_messages_workout_session_id").on(table.workoutSessionId),
   index("idx_messages_created_at").on(table.createdAt),
+  index("idx_messages_deleted_at").on(table.deletedAt),
 ]);
 
 // ============================================
@@ -335,6 +348,45 @@ export const habitEntries = pgTable("habit_entries", {
   index("idx_habit_entries_tracker_id").on(table.trackerId),
   index("idx_habit_entries_date").on(table.date),
   unique("unique_tracker_date").on(table.trackerId, table.date),
+]);
+
+// ============================================
+// PASSWORD RESET
+// ============================================
+
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_password_reset_tokens_user_id").on(table.userId),
+  index("idx_password_reset_tokens_token").on(table.token),
+  index("idx_password_reset_tokens_expires_at").on(table.expiresAt),
+]);
+
+// ============================================
+// AUDIT LOGGING
+// ============================================
+
+export const auditActionEnum = pgEnum('audit_action', ['create', 'update', 'delete', 'login', 'logout']);
+
+export const auditLogs = pgTable("audit_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'set null' }),
+  action: auditActionEnum("action").notNull(),
+  entityType: varchar("entity_type", { length: 50 }).notNull(), // 'user', 'program', 'message', etc.
+  entityId: varchar("entity_id").notNull(),
+  changes: jsonb("changes"), // Store old/new values
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_audit_logs_user_id").on(table.userId),
+  index("idx_audit_logs_entity").on(table.entityType, table.entityId),
+  index("idx_audit_logs_created_at").on(table.createdAt),
 ]);
 
 // ============================================
@@ -602,6 +654,18 @@ export const insertMessageSchema = createInsertSchema(messages).omit({
   id: true,
   createdAt: true,
   readAt: true,
+  deletedAt: true,
+});
+
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  used: true,
+  createdAt: true,
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
 });
 
 // ============================================
@@ -656,7 +720,13 @@ export type InsertSetLog = z.infer<typeof insertSetLogSchema>;
 export type Message = typeof messages.$inferSelect;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
-export type MessageDto = Omit<Message, "createdAt" | "readAt"> & {
+export type MessageDto = Omit<Message, "createdAt" | "readAt" | "deletedAt"> & {
   createdAt: string;
   readAt: string | null;
 };
+
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;

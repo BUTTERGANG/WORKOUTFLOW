@@ -77,6 +77,7 @@ export function generateInviteCode(): string {
 export interface IStorage {
   // User operations (Email/password authentication)
   getUser(id: string): Promise<User | undefined>;
+  getUserById(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: UpsertUser): Promise<User>;
   updateUserRole(userId: string, role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete'): Promise<void>;
@@ -207,6 +208,11 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
+  }
+
+  // Alias for getUser to match usage in routes
+  async getUserById(id: string): Promise<User | undefined> {
+    return this.getUser(id);
   }
 
   async createUser(userData: UpsertUser): Promise<User> {
@@ -577,6 +583,7 @@ export class DatabaseStorage implements IStorage {
         name: teams.name,
         description: teams.description,
         organizationId: teams.organizationId,
+        deletedAt: teams.deletedAt,
         createdAt: teams.createdAt,
         updatedAt: teams.updatedAt,
         organization: organizations,
