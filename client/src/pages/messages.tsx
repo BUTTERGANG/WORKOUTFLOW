@@ -192,14 +192,14 @@ export default function Messages() {
           </div>
 
           {/* Messages Container with Two-Column Layout */}
-          <div className="grid h-[500px] lg:h-[calc(100vh-16rem)] grid-cols-1 gap-4 lg:grid-cols-3">
+          <div className="grid h-[calc(100vh-12rem)] sm:h-[500px] lg:h-[calc(100vh-16rem)] grid-cols-1 gap-4 lg:grid-cols-3">
             {/* User List */}
             <Card className="lg:col-span-1">
               <CardHeader>
                 <CardTitle className="text-lg">People</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
-                <ScrollArea className="h-[400px] lg:h-[calc(100vh-20rem)]">
+                <ScrollArea className="h-[50vh] sm:h-[400px] lg:h-[calc(100vh-20rem)]">
                   {membersLoading ? (
                     <LoadingSpinner message="Loading members..." />
                   ) : otherUsers.length === 0 ? (
@@ -349,6 +349,7 @@ export default function Messages() {
                 <div className="border-t border-border p-4">
                   <div className="flex gap-2">
                     <Input
+                      aria-label="Type your message"
                       placeholder={selectedUserId ? "Type a message..." : "Select a user first..."}
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}
@@ -366,8 +367,9 @@ export default function Messages() {
                       onClick={handleSendMessage}
                       disabled={!messageText.trim() || !selectedUserId || sendMessageMutation.isPending}
                       data-testid="button-send-message"
+                      aria-label="Send message"
                     >
-                      <Send className="h-4 w-4" />
+                      <Send className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

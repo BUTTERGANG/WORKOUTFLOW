@@ -52,7 +52,7 @@ import {
   type InsertMessage,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, sql, ilike, inArray, type SQL } from "drizzle-orm";
+import { eq, and, desc, sql, ilike, inArray, isNull, type SQL } from "drizzle-orm";
 import { ConflictError, ValidationError } from "./errors";
 
 // Generate a random 8-character alphanumeric invite code
@@ -77,6 +77,7 @@ export function generateInviteCode(): string {
 export interface IStorage {
   // User operations (Email/password authentication)
   getUser(id: string): Promise<User | undefined>;
+  getUserById(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: UpsertUser): Promise<User>;
   updateUserRole(userId: string, role: 'admin' | 'head_coach' | 'assistant_coach' | 'athlete'): Promise<void>;
@@ -109,7 +110,7 @@ export interface IStorage {
   getOrganizationTeamsWithMembers(organizationId: string): Promise<(Team & { members: (TeamMember & { user: User })[] })[]>;
   addTeamMember(member: InsertTeamMember): Promise<TeamMember>;
   getTeamMembers(teamId: string): Promise<(TeamMember & { user: User })[]>;
-  searchTeams(searchTerm: string): Promise<(Team & { organization: Organization })[]>;
+  searchTeams(searchTerm: string, userId: string): Promise<(Team & { organization: Organization })[]>;
   
   // Team join request operations
   createTeamJoinRequest(request: InsertTeamJoinRequest): Promise<TeamJoinRequest>;
@@ -207,6 +208,11 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
+  }
+
+  // Alias for getUser to match usage in routes
+  async getUserById(id: string): Promise<User | undefined> {
+    return this.getUser(id);
   }
 
   async createUser(userData: UpsertUser): Promise<User> {
@@ -379,6 +385,7 @@ export class DatabaseStorage implements IStorage {
         organizationId: organizationMembers.organizationId,
         userId: organizationMembers.userId,
         role: organizationMembers.role,
+        canManageAthletes: organizationMembers.canManageAthletes,
         joinedAt: organizationMembers.joinedAt,
         user: users,
       })
@@ -496,7 +503,10 @@ export class DatabaseStorage implements IStorage {
     const [team] = await db
       .select()
       .from(teams)
-      .where(eq(teams.id, id));
+      .where(and(
+        eq(teams.id, id),
+        isNull(teams.deletedAt)
+      ));
     return team;
   }
 
@@ -504,7 +514,10 @@ export class DatabaseStorage implements IStorage {
     const teamList = await db
       .select()
       .from(teams)
-      .where(eq(teams.organizationId, organizationId));
+      .where(and(
+        eq(teams.organizationId, organizationId),
+        isNull(teams.deletedAt)
+      ));
     return teamList;
   }
 
@@ -521,7 +534,10 @@ export class DatabaseStorage implements IStorage {
         eq(teamMembers.role, 'athlete')
       ))
       .leftJoin(users, eq(teamMembers.userId, users.id))
-      .where(eq(teams.organizationId, organizationId))
+      .where(and(
+        eq(teams.organizationId, organizationId),
+        isNull(teams.deletedAt)
+      ))
       .orderBy(teams.name, users.lastName, users.firstName);
 
     const teamsMap = new Map<string, Team & { members: (TeamMember & { user: User })[] }>();
@@ -569,20 +585,30 @@ export class DatabaseStorage implements IStorage {
     return members;
   }
 
-  async searchTeams(searchTerm: string): Promise<(Team & { organization: Organization })[]> {
+  async searchTeams(searchTerm: string, userId: string): Promise<(Team & { organization: Organization })[]> {
+    // Only return teams from organizations where the user is a member
+    // Filter out soft-deleted teams
     const results = await db
       .select({
         id: teams.id,
         name: teams.name,
         description: teams.description,
         organizationId: teams.organizationId,
+        deletedAt: teams.deletedAt,
         createdAt: teams.createdAt,
         updatedAt: teams.updatedAt,
         organization: organizations,
       })
       .from(teams)
       .innerJoin(organizations, eq(teams.organizationId, organizations.id))
-      .where(ilike(teams.name, `%${searchTerm}%`));
+      .innerJoin(organizationMembers, eq(organizationMembers.organizationId, organizations.id))
+      .where(
+        and(
+          ilike(teams.name, `%${searchTerm}%`),
+          eq(organizationMembers.userId, userId),
+          isNull(teams.deletedAt)
+        )
+      );
     return results;
   }
 
@@ -883,7 +909,10 @@ export class DatabaseStorage implements IStorage {
     const [program] = await db
       .select()
       .from(programs)
-      .where(eq(programs.id, id));
+      .where(and(
+        eq(programs.id, id),
+        isNull(programs.deletedAt)
+      ));
     return program;
   }
 
@@ -891,7 +920,10 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(programs)
-      .where(eq(programs.organizationId, organizationId))
+      .where(and(
+        eq(programs.organizationId, organizationId),
+        isNull(programs.deletedAt)
+      ))
       .orderBy(desc(programs.createdAt));
   }
 
@@ -1166,7 +1198,10 @@ export class DatabaseStorage implements IStorage {
     const [session] = await db
       .select()
       .from(workoutSessions)
-      .where(eq(workoutSessions.id, id));
+      .where(and(
+        eq(workoutSessions.id, id),
+        isNull(workoutSessions.deletedAt)
+      ));
     return session;
   }
 
@@ -1174,7 +1209,10 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(workoutSessions)
-      .where(eq(workoutSessions.athleteId, athleteId))
+      .where(and(
+        eq(workoutSessions.athleteId, athleteId),
+        isNull(workoutSessions.deletedAt)
+      ))
       .orderBy(desc(workoutSessions.scheduledDate));
   }
 
@@ -1247,7 +1285,10 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(messages)
       .where(
-        sql`(${messages.senderId} = ${userId1} AND ${messages.recipientId} = ${userId2}) OR (${messages.senderId} = ${userId2} AND ${messages.recipientId} = ${userId1})`
+        and(
+          sql`(${messages.senderId} = ${userId1} AND ${messages.recipientId} = ${userId2}) OR (${messages.senderId} = ${userId2} AND ${messages.recipientId} = ${userId1})`,
+          isNull(messages.deletedAt)
+        )
       )
       .orderBy(messages.createdAt);
   }
@@ -1653,7 +1694,10 @@ export class DatabaseStorage implements IStorage {
     const programCount = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(programs)
-      .where(eq(programs.organizationId, organizationId));
+      .where(and(
+        eq(programs.organizationId, organizationId),
+        isNull(programs.deletedAt)
+      ));
 
     // Use COUNT(DISTINCT) to avoid double-counting athletes in multiple teams
     const athleteCount = await db
@@ -1664,7 +1708,8 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(teams.organizationId, organizationId),
-          eq(users.role, 'athlete')
+          eq(users.role, 'athlete'),
+          isNull(teams.deletedAt)
         )
       );
 
@@ -1681,7 +1726,9 @@ export class DatabaseStorage implements IStorage {
       .where(
         and(
           eq(teams.organizationId, organizationId),
-          sql`${workoutSessions.startedAt} >= ${sevenDaysAgo}`
+          sql`${workoutSessions.startedAt} >= ${sevenDaysAgo}`,
+          isNull(teams.deletedAt),
+          isNull(workoutSessions.deletedAt)
         )
       );
 
@@ -1705,7 +1752,9 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(teams.organizationId, organizationId),
-              sql`${setLogs.timestamp} >= ${sevenDaysAgo}`
+              sql`${setLogs.timestamp} >= ${sevenDaysAgo}`,
+              isNull(teams.deletedAt),
+              isNull(workoutSessions.deletedAt)
             )
           )
           .as('distinct_reps')

@@ -95,6 +95,13 @@ export default function Workout() {
       queryClient.invalidateQueries({ queryKey: ['/api/program-days'] });
       toast({ title: "Workout started!" });
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to start workout",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
   });
 
   // Log exercise
@@ -108,6 +115,13 @@ export default function Workout() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/workout-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['/api/workout-sessions', variables.sessionId, 'logs'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to log exercise",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
     },
   });
 
@@ -129,6 +143,13 @@ export default function Workout() {
       setRestTimer(180); // 3 minutes default rest
       setWeight("");
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to log set",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
+    },
   });
 
   // Complete workout
@@ -144,6 +165,13 @@ export default function Workout() {
       setActiveSession(null);
       setCurrentExerciseIndex(0);
       toast({ title: "Workout completed!", description: "Great work!" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to complete workout",
+        description: error.message || "Please try again",
+        variant: "destructive",
+      });
     },
   });
 

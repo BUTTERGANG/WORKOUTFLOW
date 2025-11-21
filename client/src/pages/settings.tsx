@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { Organization } from "@shared/schema";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -279,7 +280,7 @@ export default function Settings() {
                 variant="destructive"
                 onClick={async () => {
                   try {
-                    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                    await apiRequest('/api/auth/logout', { method: 'POST' });
                     window.location.href = '/';
                   } catch (error) {
                     console.error('Logout failed:', error);

@@ -2,7 +2,7 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { eq, and, gte, lt } from "drizzle-orm";
+import { eq, and, gte, lt, isNull } from "drizzle-orm";
 import passport from "passport";
 import { setupLocalAuth, isAuthenticated, hashPassword } from "./localAuth";
 import { logger } from "./logger";
@@ -36,6 +36,7 @@ import {
   programAssignments,
   teamJoinRequests,
   organizationJoinRequests,
+  organizationMembers,
   workoutSessions,
   messages,
   programDays,
@@ -96,16 +97,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: data.role,
       });
 
-      // Log the user in automatically
-      req.login(user, (err) => {
+      // Regenerate session to prevent session fixation attacks
+      req.session.regenerate((err) => {
         if (err) {
-          logger.error("logging in user after registration", err);
+          logger.error("Session regeneration failed after registration", err);
           return res.status(500).json({ message: "Registration successful but login failed" });
         }
-        
-        // Remove password hash before sending to client
-        const { passwordHash: _, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+
+        // Log the user in automatically
+        req.login(user, (err) => {
+          if (err) {
+            logger.error("logging in user after registration", err);
+            return res.status(500).json({ message: "Registration successful but login failed" });
+          }
+
+          // Remove password hash before sending to client
+          const { passwordHash: _, ...userWithoutPassword } = user;
+          res.json(userWithoutPassword);
+        });
       });
     } catch (error: any) {
       logger.error("registering user", error);
@@ -126,19 +135,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(401).json({ message: info?.message || "Invalid credentials" });
       }
-      req.login(user, (err) => {
+
+      // Regenerate session to prevent session fixation attacks
+      req.session.regenerate((err) => {
         if (err) {
+          logger.error("Session regeneration failed", err);
           return res.status(500).json({ message: "Login failed" });
         }
-        // Remove password hash before sending to client
-        const { passwordHash, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
+
+        req.login(user, (err) => {
+          if (err) {
+            return res.status(500).json({ message: "Login failed" });
+          }
+          // Remove password hash before sending to client
+          const { passwordHash, ...userWithoutPassword } = user;
+          res.json(userWithoutPassword);
+        });
       });
     })(req, res, next);
   });
 
   // Logout
-  app.post('/api/auth/logout', (req, res) => {
+  app.post('/api/auth/logout', isAuthenticated, (req, res) => {
     req.logout((err) => {
       if (err) {
         return res.status(500).json({ message: "Logout failed" });
@@ -157,8 +175,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // ORGANIZATION ROUTES
   // ============================================
-  
-  app.post('/api/organizations', isAuthenticated, async (req: AuthRequest, res) => {
+
+
+  app.post('/api/organizations', rateLimit(10, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
       logger.info("Creating organization", { userId });
@@ -270,6 +289,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           organizationId: org.id,
           userId: owner.id,
           role: 'admin' as const,
+          canManageAthletes: true, // Owners always have full permissions
           joinedAt: org.createdAt,
           user: owner
         });
@@ -282,11 +302,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update organization member permissions (owner only)
+  app.patch('/api/organization-members/:memberId/permissions', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      const { memberId } = req.params;
+      const { canManageAthletes } = req.body;
+
+      if (typeof canManageAthletes !== 'boolean') {
+        return res.status(400).json({ message: "canManageAthletes must be a boolean" });
+      }
+
+      // Get the organization member to find the organization
+      const member = await db
+        .select()
+        .from(organizationMembers)
+        .where(eq(organizationMembers.id, memberId))
+        .limit(1);
+
+      if (!member[0]) {
+        return res.status(404).json({ message: "Organization member not found" });
+      }
+
+      // Get organization to verify ownership
+      const org = await storage.getOrganization(member[0].organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      // Only organization owner can grant/revoke permissions
+      if (org.ownerId !== req.currentUser!.id) {
+        return res.status(403).json({
+          message: "Forbidden: Only organization owners can manage member permissions"
+        });
+      }
+
+      // Update the permission
+      await db
+        .update(organizationMembers)
+        .set({ canManageAthletes })
+        .where(eq(organizationMembers.id, memberId));
+
+      logger.info('Organization member permissions updated', {
+        memberId,
+        canManageAthletes,
+        updatedBy: req.currentUser!.id,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      logger.error("updating organization member permissions", error);
+      res.status(500).json({ message: "Failed to update permissions" });
+    }
+  });
+
   // ============================================
   // TEAM ROUTES
   // ============================================
-  
-  app.post('/api/teams', isAuthenticated, async (req: AuthRequest, res) => {
+
+  app.post('/api/teams', rateLimit(10, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -368,12 +441,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Remove athlete from team (requires owner permission or canManageAthletes)
+  app.delete('/api/teams/:teamId/members/:userId', isAuthenticated, verifyTeamAccess, async (req: AuthRequest, res) => {
+    try {
+      const { teamId, userId } = req.params;
+
+      // Get team to find organization
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+
+      // Get organization to check owner
+      const org = await storage.getOrganization(team.organizationId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const isOwner = org.ownerId === req.currentUser!.id;
+
+      // If not owner, check if user has canManageAthletes permission
+      if (!isOwner) {
+        const membership = await db
+          .select()
+          .from(organizationMembers)
+          .where(and(
+            eq(organizationMembers.organizationId, team.organizationId),
+            eq(organizationMembers.userId, req.currentUser!.id)
+          ))
+          .limit(1);
+
+        if (!membership[0] || !membership[0].canManageAthletes) {
+          return res.status(403).json({
+            message: "Forbidden: Only organization owners or coaches with athlete management permission can remove athletes"
+          });
+        }
+      }
+
+      // Verify the user being removed is actually an athlete
+      const targetUser = await storage.getUserById(userId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      if (targetUser.role !== 'athlete') {
+        return res.status(400).json({ message: "Can only remove athletes from teams" });
+      }
+
+      // Remove the athlete from the team
+      await storage.removeTeamMember(teamId, userId);
+
+      logger.info('Athlete removed from team', {
+        teamId,
+        userId,
+        removedBy: req.currentUser!.id,
+      });
+
+      res.status(204).send();
+    } catch (error) {
+      logger.error("removing team member", error);
+      res.status(500).json({ message: "Failed to remove team member" });
+    }
+  });
+
   // ============================================
   // TEAM JOIN REQUEST ROUTES
   // ============================================
 
-  // Search for teams
-  app.get('/api/teams/search', isAuthenticated, async (req: AuthRequest, res) => {
+  // Search for teams (only within user's organizations)
+  app.get('/api/teams/search', rateLimit(20, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -384,7 +520,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Search term must be at least 2 characters" });
       }
 
-      const teams = await storage.searchTeams(searchTerm);
+      // Only return teams from organizations where the user is a member
+      const teams = await storage.searchTeams(searchTerm, req.currentUser.id);
       res.json(teams);
     } catch (error) {
       logger.error("searching teams", error);
@@ -393,7 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create a join request
-  app.post('/api/team-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/team-join-requests', rateLimit(5, 5 * 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -600,7 +737,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
 
   // Search for organizations
-  app.post('/api/organizations/search', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/organizations/search', rateLimit(20, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const { searchTerm } = req.body;
       if (!searchTerm || typeof searchTerm !== 'string') {
@@ -616,7 +753,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get organization by invite code
-  app.get('/api/organizations/by-invite/:inviteCode', isAuthenticated, async (req: AuthRequest, res) => {
+  app.get('/api/organizations/by-invite/:inviteCode', rateLimit(3, 15 * 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const org = await storage.getOrganizationByInviteCode(req.params.inviteCode);
       if (!org) {
@@ -668,7 +805,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create an organization join request
-  app.post('/api/organization-join-requests', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/organization-join-requests', rateLimit(5, 5 * 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -832,8 +969,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // EXERCISE ROUTES
   // ============================================
-  
-  app.post('/api/exercises', isAuthenticated, async (req: AuthRequest, res) => {
+
+  app.post('/api/exercises', rateLimit(30, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -901,8 +1038,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
   // PROGRAM ROUTES
   // ============================================
-  
-  app.post('/api/programs', isAuthenticated, async (req: AuthRequest, res) => {
+
+
+  app.post('/api/programs', rateLimit(10, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
       const data = insertProgramSchema.parse({ ...req.body, createdBy: userId });
@@ -1711,47 +1849,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/workout-sessions/:id', isAuthenticated, async (req: AuthRequest, res) => {
-    try {
-      if (!req.currentUser) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const session = await storage.getWorkoutSession(req.params.id);
-      if (!session) {
-        return res.status(404).json({ message: "Workout session not found" });
-      }
-
-      // Users can only view their own sessions unless they're a coach
-      if (session.athleteId !== req.currentUser!.id) {
-        const isCoach = req.currentUser!.role === 'admin' || 
-                       req.currentUser!.role === 'head_coach' || 
-                       req.currentUser!.role === 'assistant_coach';
-        
-        if (!isCoach) {
-          return res.status(403).json({ message: "Forbidden: can only view your own workout sessions" });
-        }
-
-        // Verify coach has access to athlete's organization
-        const athleteTeams = await storage.getUserTeams(session.athleteId);
-        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
-        const coachOrgIds = coachOrgs.map(org => org.id);
-        const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
-        
-        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
-        if (!hasSharedOrg) {
-          return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
-        }
-      }
-
-      res.json(session);
-    } catch (error) {
-      logger.error("fetching workout session", error);
-      res.status(500).json({ message: "Failed to fetch workout session" });
-    }
-  });
-
-  // Get today's workout session for current user
+  // Get today's workout session for current user (MUST come before /:id route)
   app.get('/api/workout-sessions/today', isAuthenticated, async (req: AuthRequest, res) => {
     try {
       const userId = req.currentUser!.id;
@@ -1771,7 +1869,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           and(
             eq(workoutSessions.athleteId, userId),
             gte(workoutSessions.scheduledDate, today),
-            lt(workoutSessions.scheduledDate, tomorrow)
+            lt(workoutSessions.scheduledDate, tomorrow),
+            isNull(workoutSessions.deletedAt)
           )
         )
         .limit(1);
@@ -1800,7 +1899,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get the most recent active assignment
-      const assignment = activeAssignments.sort((a, b) => 
+      const assignment = activeAssignments.sort((a, b) =>
         new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
       )[0];
 
@@ -1818,7 +1917,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Find the appropriate program day
       const totalDays = fullProgram.reduce((sum, week) => sum + week.days.length, 0);
       const absoluteDayNumber = daysSinceStart % totalDays;
-      
+
       let currentDayCount = 0;
       let todaysProgramDay = null;
 
@@ -1866,6 +1965,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({
         message: "Failed to get today's workout"
       });
+    }
+  });
+
+  app.get('/api/workout-sessions/:id', isAuthenticated, async (req: AuthRequest, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      const session = await storage.getWorkoutSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ message: "Workout session not found" });
+      }
+
+      // Users can only view their own sessions unless they're a coach
+      if (session.athleteId !== req.currentUser!.id) {
+        const isCoach = req.currentUser!.role === 'admin' ||
+                       req.currentUser!.role === 'head_coach' ||
+                       req.currentUser!.role === 'assistant_coach';
+
+        if (!isCoach) {
+          return res.status(403).json({ message: "Forbidden: can only view your own workout sessions" });
+        }
+
+        // Verify coach has access to athlete's organization
+        const athleteTeams = await storage.getUserTeams(session.athleteId);
+        const coachOrgs = await storage.getUserOrganizations(req.currentUser!.id);
+        const coachOrgIds = coachOrgs.map(org => org.id);
+        const athleteOrgIds = [...new Set(athleteTeams.map((t: any) => t.organizationId))];
+
+        const hasSharedOrg = athleteOrgIds.some((orgId: string) => coachOrgIds.includes(orgId));
+        if (!hasSharedOrg) {
+          return res.status(403).json({ message: "Forbidden: athlete not in your organization" });
+        }
+      }
+
+      res.json(session);
+    } catch (error) {
+      logger.error("fetching workout session", error);
+      res.status(500).json({ message: "Failed to fetch workout session" });
     }
   });
 
@@ -2461,37 +2600,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ============================================
 
   // Send a message
-  app.post('/api/messages', isAuthenticated, async (req: AuthRequest, res) => {
+  app.post('/api/messages', rateLimit(30, 60 * 1000), isAuthenticated, async (req: AuthRequest, res) => {
     try {
       if (!req.currentUser) {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
       const data = insertMessageSchema.parse({ ...req.body, senderId: req.currentUser.id });
-      
-      // Verify sender and recipient are in the same organization (membership or ownership)
-      const senderMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
-      const senderOwnerships = await storage.getUserOrganizations(req.currentUser.id);
-      const recipientMemberships = await storage.getUserOrganizationMemberships(data.recipientId);
-      const recipientOwnerships = await storage.getUserOrganizations(data.recipientId);
-      
-      const senderOrgIds = new Set([
-        ...senderMemberships.map(m => m.organizationId),
-        ...senderOwnerships.map(o => o.id)
-      ]);
-      const recipientOrgIds = new Set([
-        ...recipientMemberships.map(m => m.organizationId),
-        ...recipientOwnerships.map(o => o.id)
-      ]);
-      
-      const hasSharedOrg = [...senderOrgIds].some(orgId => recipientOrgIds.has(orgId));
-      
-      if (!hasSharedOrg) {
-        return res.status(403).json({ message: "Forbidden: can only message users in same organization" });
+
+      // Team-based messaging permissions:
+      // 1. Users who share a team can message each other
+      // 2. Coaches in the same org can message each other (cross-team)
+
+      const senderTeams = await storage.getUserTeams(req.currentUser.id);
+      const recipientTeams = await storage.getUserTeams(data.recipientId);
+
+      // Check if they share any team
+      const sharedTeams = senderTeams.filter(st =>
+        recipientTeams.some(rt => rt.id === st.id)
+      );
+
+      if (sharedTeams.length > 0) {
+        // Same team = allowed
+        const message = await storage.createMessage(data);
+        return res.json(message);
       }
 
-      const message = await storage.createMessage(data);
-      res.json(message);
+      // If no shared team, check if both are coaches in same org
+      const sender = await storage.getUserById(req.currentUser.id);
+      const recipient = await storage.getUserById(data.recipientId);
+
+      if (!sender || !recipient) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isCoach = (role: string) => ['admin', 'head_coach', 'assistant_coach'].includes(role);
+
+      if (isCoach(sender.role) && isCoach(recipient.role)) {
+        // Check if same org (via membership or ownership)
+        const senderMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
+        const senderOwnerships = await storage.getUserOrganizations(req.currentUser.id);
+        const recipientMemberships = await storage.getUserOrganizationMemberships(data.recipientId);
+        const recipientOwnerships = await storage.getUserOrganizations(data.recipientId);
+
+        const senderOrgIds = new Set([
+          ...senderMemberships.map(m => m.organizationId),
+          ...senderOwnerships.map(o => o.id)
+        ]);
+        const recipientOrgIds = new Set([
+          ...recipientMemberships.map(m => m.organizationId),
+          ...recipientOwnerships.map(o => o.id)
+        ]);
+
+        const hasSharedOrg = [...senderOrgIds].some(orgId => recipientOrgIds.has(orgId));
+
+        if (hasSharedOrg) {
+          const message = await storage.createMessage(data);
+          return res.json(message);
+        }
+      }
+
+      return res.status(403).json({
+        message: "Forbidden: can only message users on the same team, or coaches in the same organization"
+      });
     } catch (error) {
       logger.error("creating message", error);
       res.status(400).json({ message: "Failed to create message" });
@@ -2505,29 +2676,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "Unauthorized" });
       }
 
-      // Verify both users are in the same organization (membership or ownership)
-      const currentUserMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
-      const currentUserOwnerships = await storage.getUserOrganizations(req.currentUser.id);
-      const otherUserMemberships = await storage.getUserOrganizationMemberships(req.params.userId);
-      const otherUserOwnerships = await storage.getUserOrganizations(req.params.userId);
-      
-      const currentUserOrgIds = new Set([
-        ...currentUserMemberships.map(m => m.organizationId),
-        ...currentUserOwnerships.map(o => o.id)
-      ]);
-      const otherUserOrgIds = new Set([
-        ...otherUserMemberships.map(m => m.organizationId),
-        ...otherUserOwnerships.map(o => o.id)
-      ]);
-      
-      const hasSharedOrg = [...currentUserOrgIds].some(orgId => otherUserOrgIds.has(orgId));
-      
-      if (!hasSharedOrg) {
-        return res.status(403).json({ message: "Forbidden: can only view messages with users in same organization" });
+      // Team-based messaging permissions (same as POST /api/messages)
+      const currentUserTeams = await storage.getUserTeams(req.currentUser.id);
+      const otherUserTeams = await storage.getUserTeams(req.params.userId);
+
+      // Check if they share any team
+      const sharedTeams = currentUserTeams.filter(ct =>
+        otherUserTeams.some(ot => ot.id === ct.id)
+      );
+
+      if (sharedTeams.length > 0) {
+        // Same team = allowed
+        const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
+        return res.json(messages);
       }
 
-      const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
-      res.json(messages);
+      // If no shared team, check if both are coaches in same org
+      const currentUser = await storage.getUserById(req.currentUser.id);
+      const otherUser = await storage.getUserById(req.params.userId);
+
+      if (!currentUser || !otherUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const isCoach = (role: string) => ['admin', 'head_coach', 'assistant_coach'].includes(role);
+
+      if (isCoach(currentUser.role) && isCoach(otherUser.role)) {
+        // Check if same org (via membership or ownership)
+        const currentUserMemberships = await storage.getUserOrganizationMemberships(req.currentUser.id);
+        const currentUserOwnerships = await storage.getUserOrganizations(req.currentUser.id);
+        const otherUserMemberships = await storage.getUserOrganizationMemberships(req.params.userId);
+        const otherUserOwnerships = await storage.getUserOrganizations(req.params.userId);
+
+        const currentUserOrgIds = new Set([
+          ...currentUserMemberships.map(m => m.organizationId),
+          ...currentUserOwnerships.map(o => o.id)
+        ]);
+        const otherUserOrgIds = new Set([
+          ...otherUserMemberships.map(m => m.organizationId),
+          ...otherUserOwnerships.map(o => o.id)
+        ]);
+
+        const hasSharedOrg = [...currentUserOrgIds].some(orgId => otherUserOrgIds.has(orgId));
+
+        if (hasSharedOrg) {
+          const messages = await storage.getConversation(req.currentUser.id, req.params.userId);
+          return res.json(messages);
+        }
+      }
+
+      return res.status(403).json({
+        message: "Forbidden: can only view messages with users on the same team, or coaches in the same organization"
+      });
     } catch (error) {
       logger.error("fetching conversation", error);
       res.status(500).json({ message: "Failed to fetch conversation" });
@@ -2545,7 +2745,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const message = await db
         .select()
         .from(messages)
-        .where(eq(messages.id, req.params.id))
+        .where(and(
+          eq(messages.id, req.params.id),
+          isNull(messages.deletedAt)
+        ))
         .limit(1);
 
       if (!message[0]) {
