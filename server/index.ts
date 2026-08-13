@@ -68,14 +68,16 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // CSRF token endpoint - must be BEFORE registerRoutes
-  // This endpoint must be unprotected so clients can get initial token
+  const server = await registerRoutes(app);
+
+  // CSRF token endpoint - unprotected so clients can get initial token.
+  // Must come after registerRoutes(app), since setupLocalAuth() (called from
+  // inside registerRoutes) is what attaches the session middleware this
+  // route's generateToken() depends on.
   app.get('/api/csrf-token', (req, res) => {
     const token = generateToken(req, res);
     res.json({ csrfToken: token });
   });
-
-  const server = await registerRoutes(app);
 
   // Use centralized error handler from errors.ts
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

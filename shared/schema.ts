@@ -640,6 +640,12 @@ export const insertProgramAssignmentSchema = createInsertSchema(programAssignmen
 
 export const insertWorkoutSessionSchema = createInsertSchema(workoutSessions).omit({
   id: true,
+}).extend({
+  // Coerce ISO date strings like insertProgramAssignmentSchema above does,
+  // since the client posts scheduledDate as JSON (a string, not a Date).
+  scheduledDate: z.union([z.date(), z.string().transform(str => new Date(str))]),
+  startedAt: z.union([z.date(), z.string().transform(str => new Date(str))]).nullish(),
+  completedAt: z.union([z.date(), z.string().transform(str => new Date(str))]).nullish(),
 });
 
 export const insertExerciseLogSchema = createInsertSchema(exerciseLogs).omit({

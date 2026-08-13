@@ -145,7 +145,7 @@ export interface IStorage {
   createProgramExercise(exercise: InsertProgramExercise): Promise<ProgramExercise>;
   getProgramWeeks(programId: string): Promise<ProgramWeek[]>;
   getProgramDays(weekId: string): Promise<ProgramDay[]>;
-  getProgramExercises(dayId: string): Promise<ProgramExercise[]>;
+  getProgramExercises(dayId: string): Promise<(ProgramExercise & { exercise: Exercise })[]>;
   
   // Program assignment operations
   createProgramAssignment(assignment: InsertProgramAssignment): Promise<ProgramAssignment>;
@@ -1122,10 +1122,22 @@ export class DatabaseStorage implements IStorage {
     return day;
   }
 
-  async getProgramExercises(dayId: string): Promise<ProgramExercise[]> {
+  async getProgramExercises(dayId: string): Promise<(ProgramExercise & { exercise: Exercise })[]> {
     return await db
-      .select()
+      .select({
+        id: programExercises.id,
+        dayId: programExercises.dayId,
+        exerciseId: programExercises.exerciseId,
+        order: programExercises.order,
+        sets: programExercises.sets,
+        reps: programExercises.reps,
+        intensity: programExercises.intensity,
+        restSeconds: programExercises.restSeconds,
+        notes: programExercises.notes,
+        exercise: exercises,
+      })
       .from(programExercises)
+      .innerJoin(exercises, eq(programExercises.exerciseId, exercises.id))
       .where(eq(programExercises.dayId, dayId))
       .orderBy(programExercises.order);
   }

@@ -37,7 +37,8 @@ const csrfUtilities = doubleCsrf({
 });
 
 // Extract utilities - type definitions may be incomplete but runtime works correctly
+// csrf-csrf v4 renamed generateToken -> generateCsrfToken
 const doubleCsrfProtection = csrfUtilities.doubleCsrfProtection;
-const generateToken = (csrfUtilities as any).generateToken;
+const generateToken = (csrfUtilities as any).generateCsrfToken;
 
 export { doubleCsrfProtection, generateToken };
