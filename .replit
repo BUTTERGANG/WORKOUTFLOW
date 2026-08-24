@@ -47,6 +47,7 @@ localPort = 46807
 externalPort = 5173
 
 [env]
+CLAUDE_CONFIG_DIR = "/home/runner/workspace/.local/state/claude"
 PORT = "5000"
 
 [workflows]
