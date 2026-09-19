@@ -294,7 +294,7 @@ export default function Dashboard() {
                     variant="outline" 
                     className="w-full justify-start" 
                     data-testid="button-create-program"
-                    onClick={() => window.location.href = '/programs'}
+                    onClick={() => setLocation('/programs')}
                   >
                     <FileText className="mr-2 h-4 w-4" />
                     Create New Program
@@ -303,7 +303,7 @@ export default function Dashboard() {
                     variant="outline" 
                     className="w-full justify-start"
                     data-testid="button-manage-athletes"
-                    onClick={() => window.location.href = '/athletes'}
+                    onClick={() => setLocation('/athletes')}
                   >
                     <Users className="mr-2 h-4 w-4" />
                     Manage Athletes
@@ -312,7 +312,7 @@ export default function Dashboard() {
                     variant="outline" 
                     className="w-full justify-start"
                     data-testid="button-view-analytics"
-                    onClick={() => window.location.href = '/progress'}
+                    onClick={() => setLocation('/progress')}
                   >
                     <TrendingUp className="mr-2 h-4 w-4" />
                     View Analytics
@@ -324,7 +324,7 @@ export default function Dashboard() {
                     variant="default" 
                     className="w-full justify-start"
                     data-testid="button-start-workout"
-                    onClick={() => window.location.href = '/workout'}
+                    onClick={() => setLocation('/workout')}
                   >
                     <Activity className="mr-2 h-4 w-4" />
                     Start Workout
@@ -333,7 +333,7 @@ export default function Dashboard() {
                     variant="outline" 
                     className="w-full justify-start"
                     data-testid="button-view-progress"
-                    onClick={() => window.location.href = '/progress'}
+                    onClick={() => setLocation('/progress')}
                   >
                     <TrendingUp className="mr-2 h-4 w-4" />
                     View My Progress

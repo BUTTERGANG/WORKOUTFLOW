@@ -366,25 +366,17 @@ export default function Programs() {
 
         {/* Programs Grid */}
         {programsLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-              <p className="text-muted-foreground">Loading programs...</p>
-            </div>
-          </div>
+          <LoadingSpinner message="Loading programs..." />
         ) : !programs || programs.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <FileText className="mb-4 h-12 w-12 text-muted-foreground" />
-              <h3 className="mb-2 text-lg font-semibold">No Programs Yet</h3>
-              <p className="mb-4 text-center text-sm text-muted-foreground">
-                Create your first training program to get started
-              </p>
-              <Button onClick={() => setCreateDialogOpen(true)} variant="outline">
-                Create Program
-              </Button>
-            </CardContent>
-          </Card>
+          <EmptyState
+            icon={FileText}
+            title="No Programs Yet"
+            description="Create your first training program to get started"
+            action={{
+              label: "Create Program",
+              onClick: () => setCreateDialogOpen(true),
+            }}
+          />
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {programs.map((program) => (
@@ -489,12 +481,7 @@ function ProgramBuilderDialog({
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-6 pb-6">
           {weeksLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-                <p className="text-muted-foreground">Loading weeks...</p>
-              </div>
-            </div>
+            <LoadingSpinner message="Loading weeks..." />
           ) : !programWeeks || programWeeks.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -1066,7 +1053,18 @@ function ProgramCard({ program, onView }: { program: Program; onView: () => void
     <Card className="hover-elevate active-elevate-2" data-testid={`card-program-${program.id}`}>
       <CardHeader className="pb-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0 cursor-pointer" onClick={onView}>
+          <div
+            className="flex-1 min-w-0 cursor-pointer"
+            onClick={onView}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onView();
+              }
+            }}
+          >
             <CardTitle className="text-lg sm:text-base truncate">{program.name}</CardTitle>
             {program.description && (
               <CardDescription className="mt-2 line-clamp-2 text-sm">

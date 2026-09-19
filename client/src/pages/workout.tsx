@@ -363,10 +363,16 @@ export default function Workout() {
                   Set {completedSets + 1} of {totalSets}
                 </span>
               </div>
-              <div className="h-3 w-full rounded-full bg-muted sm:h-2">
+              <div
+                className="h-3 w-full rounded-full bg-muted sm:h-2"
+                role="progressbar"
+                aria-valuenow={totalSets ? Math.round((completedSets / totalSets) * 100) : 0}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
                 <div
                   className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${(completedSets / totalSets) * 100}%` }}
+                  style={{ width: `${totalSets ? (completedSets / totalSets) * 100 : 0}%` }}
                 />
               </div>
             </div>
